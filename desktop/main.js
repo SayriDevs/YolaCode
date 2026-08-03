@@ -2,5 +2,5 @@
 import { mount } from '../dist/app.js'
 import { buildDesktopApi } from './api.js'
 
-const api = buildDesktopApi()
+const api = await buildDesktopApi()
 mount(api, document.getElementById('app'))

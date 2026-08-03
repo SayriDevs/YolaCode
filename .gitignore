@@ -2,3 +2,6 @@ node_modules/
 *.log
 .DS_Store
 # dist/ NO se ignora: el bundle es lo que el repo publica (jsDelivr lo sirve)
+
+src-tauri/target/
+*.log
