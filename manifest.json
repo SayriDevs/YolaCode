@@ -1,0 +1,14 @@
+{
+  "id": "yola-code",
+  "name": "YOLA Code",
+  "author": "YOLA",
+  "repo": "github.com/SayriDevs/YolaCode",
+  "icon": "🧑‍💻",
+  "category": "Dev",
+  "description": "Editor con agente integrado — la primera app de la comunidad YOLA. Sirve de ejemplo: así se construye una app instalable.",
+  "version": "0.1.0",
+  "entry": "app.js",
+  "checksum": "e105bbb680391985c423427e318b42f04b385cb4c3dff94c37e0489e97690676",
+  "singleton": true,
+  "permissions": ["notify", "openApp"]
+}
