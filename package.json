@@ -1,0 +1,17 @@
+{
+  "name": "yola-code",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "YOLA Code — editor con agente integrado. La primera app de la comunidad YOLA, ahora con build propio.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "solid-js": "^1.9.14",
+    "vite": "^6.0.0",
+    "vite-plugin-solid": "^2.11.13"
+  }
+}

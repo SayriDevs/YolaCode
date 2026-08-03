@@ -1,41 +1,55 @@
 # YOLA Code 🧑‍💻
 
-La primera app de la comunidad YOLA — y el ejemplo vivo de cómo se construye una app instalable.
+La primera app de la comunidad YOLA — ahora con **build propio** (Solid + Vite). YOLA Code se desarrolla a sí misma: el OS la instala desde este repo y la app evoluciona desde dentro.
 
 ## Qué es
 
-Un editor de archivos con agente integrado que se instala desde el **App Store de YOLA OS**. Es la primera app firmada por **YOLA** y demuestra el contrato completo:
+Editor de archivos con agente integrado, instalable desde el **App Store de YOLA OS**. Demuestra el contrato completo de una app con toolchain real:
 
-- `manifest.json` — el contrato: id, autor, repo, permisos, **checksum sha256 del entry**
-- `app.js` — el entry (JS vanilla, sin frameworks): `createApp(api)` + UI con el tema del OS
+- `manifest.json` — el contrato: autor, repo, permisos, **checksum sha256 del entry**
+- `dist/app.js` — el **bundle compilado** (ESM autocontenido, Solid incluido) que el OS importa
+- `src/` — el código fuente en Solid (JSX real, no vanilla)
 
-## Cómo se instala
+## Desarrollo
 
-1. Abre el **App Store** en YOLA OS
-2. Busca "YOLA Code"
-3. **Instalar** → el OS descarga el manifest y el entry **desde este repo**, verifica el checksum y lo registra
-4. Aparece en el escritorio
+```bash
+npm install
+npm run dev      # dev aislado en http://localhost:5199 (api simulado)
+npm run build    # produce dist/app.js (bundle autocontenido)
+```
 
-## Qué demuestra (para la comunidad)
+## Publicar un release (el ritual)
 
-- **Contrato**: manifest + entry + permisos + checksum
-- **UI con el tema del OS**: `var(--accent)`, `var(--bg-window)`…
-- **Persistencia propia**: `localStorage` con prefijo `yola-code.*`
-- **Integración con el agente**: "Preguntar a YOLA" copia el archivo y abre el Chat
-- **Portabilidad**: exportable como `.yola-app` e importable en cualquier PC
+1. Edita `src/`, sube versión en `package.json` y `manifest.json`
+2. `npm run build`
+3. **Recalcula el checksum** del bundle:
+   ```powershell
+   (Get-FileHash dist\app.js -Algorithm SHA256).Hash.ToLower()
+   ```
+4. Actualiza `checksum` en `manifest.json` y haz push
+5. **Purga jsDelivr** (caché ~12h):
+   ```
+   https://purge.jsdelivr.net/gh/SayriDevs/YolaCode@main/dist/app.js
+   ```
+6. El App Store de cualquier YOLA detecta la nueva versión **del repo** (sin tocar el catálogo) → "Actualizar"
 
 ## Estructura
 
 ```
-manifest.json   ← el contrato (el checksum firma el entry)
-app.js          ← el entry (ESM, exporta createApp(api))
+src/App.jsx       ← el componente (Solid)
+src/index.js      ← exporta createApp(api)
+dist/app.js       ← bundle publicado (SE COMMITEA: el repo lo sirve)
+manifest.json     ← el contrato (entry → dist/app.js)
+index.html        ← dev aislado
 ```
 
-## Editar y publicar cambios
+## Qué demuestra (para la comunidad)
 
-1. Edita `app.js`
-2. **Recalcula el checksum**: `certutil -hashfile app.js SHA256` (o el botón "Firmar entry" en YOLA Apps Studio)
-3. Actualiza `checksum` en `manifest.json` y sube la versión
-4. `git add . && git commit && git push`
+- **App con toolchain**: JSX real, componentes, build — no solo vanilla
+- **Contrato**: entry bundle + checksum verificado contra el repo
+- **UI con el tema del OS**: `var(--accent)`, `var(--bg-window)`…
+- **Persistencia propia**: `localStorage` con prefijo `yola-code.*`
+- **Integración con el agente**: "Preguntar a YOLA" copia y abre el Chat
+- **Ciclo nativo**: push → jsDelivr → App Store detecta la actualización
 
-> La catedral verifica: el repo declara su propio repo, el checksum protege el entry, y la autoría sigue al dueño del repo.
+> La catedral verifica: el repo declara su propio repo, el checksum protege el bundle, y la autoría sigue al dueño del repo.

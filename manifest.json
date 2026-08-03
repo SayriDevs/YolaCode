@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "Editor con agente integrado — la primera app de la comunidad YOLA. Sirve de ejemplo: así se construye una app instalable.",
-  "version": "0.1.0",
-  "entry": "app.js",
-  "checksum": "e105bbb680391985c423427e318b42f04b385cb4c3dff94c37e0489e97690676",
+  "description": "Editor con agente integrado — la primera app de la comunidad YOLA, con build propio (Solid + Vite).",
+  "version": "0.2.0",
+  "entry": "dist/app.js",
+  "checksum": "1f8010a0c4bd8c2803d63610b1647e9cb5ca30d3ec6fd81d6f6343b1a79a2124",
   "singleton": true,
   "permissions": ["notify", "openApp"]
 }
