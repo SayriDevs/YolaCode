@@ -94,8 +94,11 @@ export function createApp(api) {
     }
 
     function addTab(tab) {
-      setTabs(prev => [...prev, tab])
-      setActiveIdx(tabs().length - 1) // el nuevo tab es el último (índice length-1)
+      // computar el array nuevo ANTES de los sets (Solid batcha dentro de
+      // handlers: leer tabs() después de setTabs daría el valor viejo)
+      const next = [...tabs(), tab]
+      setTabs(next)
+      setActiveIdx(next.length - 1) // el nuevo tab es el último
     }
 
     function closeTab(i) {

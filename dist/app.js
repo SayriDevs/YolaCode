@@ -889,7 +889,8 @@ function fn(e) {
       });
     }
     function Me(d) {
-      o((g) => [...g, d]), c(s().length - 1);
+      const g = [...s(), d];
+      o(g), c(g.length - 1);
     }
     function ct(d) {
       if (o((g) => g.filter((h, m) => m !== d)), f() === d) {
