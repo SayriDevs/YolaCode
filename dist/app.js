@@ -889,7 +889,7 @@ function fn(e) {
       });
     }
     function Me(d) {
-      o((g) => [...g, d]), c(s().length);
+      o((g) => [...g, d]), c(s().length - 1);
     }
     function ct(d) {
       if (o((g) => g.filter((h, m) => m !== d)), f() === d) {

@@ -95,7 +95,7 @@ export function createApp(api) {
 
     function addTab(tab) {
       setTabs(prev => [...prev, tab])
-      setActiveIdx(tabs().length)
+      setActiveIdx(tabs().length - 1) // el nuevo tab es el último (índice length-1)
     }
 
     function closeTab(i) {
