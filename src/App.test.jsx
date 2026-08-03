@@ -3,7 +3,7 @@
 // con Solid para verificar el flujo completo. jsdom como entorno.
 import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'solid-js/web'
-import { createApp } from './index.js'
+import { createApp, mount } from './index.jsx'
 
 function makeApi() {
   return {

@@ -9,7 +9,7 @@ export default defineConfig({
   plugins: [solidPlugin()],
   build: {
     lib: {
-      entry: 'src/index.js',
+      entry: 'src/index.jsx',
       formats: ['es'],
       fileName: () => 'app.js',
     },

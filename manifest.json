@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA — workspace real, tabs, syntax highlighting, paleta de comandos y agente integrado. Mejor que Cursor: vive en un OS cuyo kernel es el agente.",
-  "version": "0.3.2",
+  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido.",
+  "version": "0.3.3",
   "entry": "dist/app.js",
-  "checksum": "608abdd208f9abbdfa3f781bcbc20cc970910f29005e9cd861aa5395cc292a8d",
+  "checksum": "95e867975f58f5098216038eb47a2eaf78afb7565a36cbcad8fb027a58dc9d79",
   "singleton": true,
   "permissions": ["notify", "openApp", "files"]
 }

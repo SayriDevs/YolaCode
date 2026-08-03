@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "YolaCode",
+  "version": "0.3.3",
+  "identifier": "dev.yola.yolacode",
+  "build": {
+    "frontendDist": ["../desktop", "../dist"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "YOLA Code",
+        "width": 1000,
+        "height": 680,
+        "minWidth": 640,
+        "minHeight": 400
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "resources": ["resources/daemon/yola-bridge.exe"],
+    "icon": []
+  }
+}
