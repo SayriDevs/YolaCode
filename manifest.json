@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "Editor con agente integrado — la primera app de la comunidad YOLA, con build propio (Solid + Vite).",
-  "version": "0.2.0",
+  "description": "El editor nativo de YOLA — workspace real, tabs, syntax highlighting, paleta de comandos y agente integrado. Mejor que Cursor: vive en un OS cuyo kernel es el agente.",
+  "version": "0.3.0",
   "entry": "dist/app.js",
-  "checksum": "1f8010a0c4bd8c2803d63610b1647e9cb5ca30d3ec6fd81d6f6343b1a79a2124",
+  "checksum": "4fe6e530b5e7e46004b2d1f6795f586e2170b451bdb7e06a84cbb17f51a95338",
   "singleton": true,
-  "permissions": ["notify", "openApp"]
+  "permissions": ["notify", "openApp", "files"]
 }
