@@ -1,8 +1,10 @@
 import { defineConfig } from 'vitest/config'
+import solidPlugin from 'vite-plugin-solid'
 
 export default defineConfig({
+  plugins: [solidPlugin()], // transform de JSX + resolución client de solid-js
   test: {
-    environment: 'node', // los tests del repo son lógica pura (highlight)
-    include: ['src/**/*.test.js'],
+    environment: 'jsdom', // tests de UI (App) y lógica pura (highlight)
+    include: ['src/**/*.test.{js,jsx}'],
   },
 })
