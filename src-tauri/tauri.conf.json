@@ -13,7 +13,8 @@
         "width": 1000,
         "height": 680,
         "minWidth": 640,
-        "minHeight": 400
+        "minHeight": 400,
+        "additionalBrowserArgs": "--allow-running-insecure-content"
       }
     ],
     "security": {

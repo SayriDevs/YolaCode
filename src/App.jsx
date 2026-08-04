@@ -377,7 +377,7 @@ export function createApp(api) {
                 <span>{detectLanguage(active().name)}</span>
                 <span>{active().content.split('\n').length} líneas · {active().content.trim() ? active().content.trim().split(/\s+/).length : 0} palabras</span>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.3.0</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.3.3</span>
             </div>
           </div>
         </div>
