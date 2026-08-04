@@ -11,6 +11,7 @@ import { Editor } from './editor/Editor'
 import { Explorer } from './editor/Explorer'
 import { Palette } from './editor/Palette'
 import { WorkspaceSearch } from './editor/WorkspaceSearch'
+import { AgentPanel } from './agent/AgentPanel'
 
 export function createApp(api) {
   return function YolaCodeWindow() {
@@ -31,6 +32,8 @@ export function createApp(api) {
     const [wsQuery, setWsQuery] = createSignal('')
     const [cursor, setCursor] = createSignal(null) // {line, col}
     const [helpOpen, setHelpOpen] = createSignal(false)
+    const [agentOpen, setAgentOpen] = createSignal(false)
+    const [agentPrefill, setAgentPrefill] = createSignal('')
     const [recent, setRecent] = createSignal([]) // [{path, name}] aperturas recientes
     let taRef = null
     let saveTimer = null
@@ -285,19 +288,33 @@ export function createApp(api) {
     }
 
     // ── Agente ──
-    async function askYola(withSelection) {
+    function askYola(withSelection) {
+      // El panel del agente vive en YolaCode (funciona en el OS y en el .exe)
+      setAgentOpen(true)
+      if (withSelection && taRef && taRef.selectionStart !== taRef.selectionEnd) {
+        const t = active()
+        if (t) setAgentPrefill(t.content.slice(taRef.selectionStart, taRef.selectionEnd))
+      }
+    }
+
+    // Aplica el cambio propuesto por el agente (selección o archivo completo)
+    async function applyToActive(proposed) {
       const t = active()
       if (!t) return
-      let text = t.content
-      if (withSelection && taRef && taRef.selectionStart !== taRef.selectionEnd) {
-        text = t.content.slice(taRef.selectionStart, taRef.selectionEnd)
-      }
-      try {
-        await navigator.clipboard.writeText(text)
-        api.os.notify?.(withSelection ? 'Selección copiada — pídeme mejorarla en el Chat' : 'Archivo copiado — pégalo en el Chat', 'info', 2500)
-        api.os.openApp?.('chat')
-      } catch {
-        api.os.notify?.('No se pudo copiar', 'error', 3000)
+      const sel = taRef ? { s: taRef.selectionStart, e: taRef.selectionEnd } : null
+      const nextContent = sel && sel.s !== sel.e
+        ? t.content.slice(0, sel.s) + proposed + t.content.slice(sel.e)
+        : proposed
+      setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, content: nextContent, dirty: false } : x))
+      if (!t.local) {
+        try {
+          await filesApi.write(t.path, nextContent)
+          flash('✨ Cambio aplicado en disco')
+        } catch (e) {
+          api.os.notify?.(`Error al guardar: ${e.message}`, 'error', 3000)
+        }
+      } else {
+        flash('✨ Cambio aplicado')
       }
     }
 
@@ -347,6 +364,7 @@ export function createApp(api) {
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key === 'p') { e.preventDefault(); setPalette(v => !v); return }
       if (mod && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v); setSearchIdx(0); return }
+      if (mod && e.key === 'j') { e.preventDefault(); setAgentOpen(v => !v); return }
       if (mod && e.key === 'w') { e.preventDefault(); if (activeIdx() !== -1) closeTab(activeIdx()); return }
       if (mod && e.key === 'Tab') {
         // Ctrl+Tab: ciclar tabs (solo si hay más de uno)
@@ -402,7 +420,7 @@ export function createApp(api) {
             <span style={{ 'font-size': '10.5px', color: 'var(--text-secondary)' }}>{status()}</span>
           </Show>
           <button onClick={() => setPalette(true)} style={btnAccent} title="Paleta de comandos (Ctrl+P)" aria-label="Paleta de comandos">☰</button>
-          <button onClick={() => askYola(false)} style={btnStyle} title="Copia el archivo y abre el Chat" aria-label="Copia el archivo y abre el Chat">💬</button>
+          <button onClick={() => askYola(false)} style={btnStyle} title="Abrir el agente (Ctrl+J)" aria-label="Abrir el agente">💬</button>
           <button onClick={() => askYola(true)} style={btnAccent} title="Mejorar selección con YOLA" aria-label="Mejorar selección con YOLA">✨</button>
           <button onClick={openManifest} style={btnStyle} title="Ver manifest" aria-label="Ver manifest">📜</button>
         </div>
@@ -539,10 +557,22 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.4.1</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.5.0</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
+
+          {/* Panel del agente (derecho, colapsable) */}
+          <AgentPanel
+            api={api}
+            open={agentOpen()}
+            onClose={() => setAgentOpen(false)}
+            getActiveFile={() => active()}
+            getSelection={() => taRef ? { s: taRef.selectionStart, e: taRef.selectionEnd } : null}
+            onApplyToActive={applyToActive}
+            prefill={agentPrefill()}
+            onPrefillConsumed={() => setAgentPrefill('')}
+          />
         </div>
 
         {/* ── Paleta ── */}
@@ -586,6 +616,7 @@ export function createApp(api) {
               <Shortcut keys="Alt+↑ ↓" label="Mover línea" />
               <Shortcut keys="Ctrl+W" label="Cerrar pestaña" />
               <Shortcut keys="Ctrl+Tab" label="Siguiente pestaña" />
+              <Shortcut keys="Ctrl+J" label="Panel del agente" />
               <Shortcut keys="Tab" label="Indentar (2 espacios)" />
               <Shortcut keys="Esc" label="Cerrar panel" />
               <Shortcut keys="F1" label="Este panel" />
@@ -594,9 +625,11 @@ export function createApp(api) {
               </div>
               <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Explorer (clic derecho)</div>
               <div style={{ 'font-size': '11px', color: 'var(--text-secondary)' }}>Nuevo archivo · Nueva carpeta · Renombrar · Eliminar</div>
-              <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Agente</div>
+              <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Agente (panel derecho)</div>
               <div style={{ 'font-size': '11px', color: 'var(--text-secondary)' }}>
-                Selecciona código y pulsa ✨ para pedir mejoras, o 💬 para trabajar el archivo completo en el Chat. Pega el resultado de vuelta en el editor.
+                Selecciona código y pulsa ✨ (o Ctrl+J y escribe). El contexto del archivo activo viaja solo.
+                Cuando el agente responda con código, usa «💾 Aplicar al archivo» para ver el preview y escribir en disco.
+                Las sesiones se comparten con el Chat del OS (tag #yola-code).
               </div>
               <button onClick={() => setHelpOpen(false)} style={{ ...btnAccent, 'margin-top': '10px', alignSelf: 'flex-end' }}>Cerrar</button>
             </div>

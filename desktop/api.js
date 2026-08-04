@@ -80,6 +80,7 @@ export async function buildDesktopApi() {
       setTitle: (t) => { document.title = t || 'YOLA Code' },
     },
     os: {
+      get daemonUrl() { return baseUrl }, // para el panel del agente (mismo daemon que los archivos)
       notify: (msg, type = 'info') => {
         console.log(`[${type}] ${msg}`)
       },
@@ -87,7 +88,7 @@ export async function buildDesktopApi() {
         console.log(`[openApp] ${appId}`)
       },
       getApps: () => [
-        { id: 'yola-code', name: 'YOLA Code', manifest: { id: 'yola-code', name: 'YOLA Code', version: '0.4.0' } },
+        { id: 'yola-code', name: 'YOLA Code', manifest: { id: 'yola-code', name: 'YOLA Code', version: '0.5.0' } },
       ],
       // files SOLO si hay daemon — si no, la app cae a modo local
       ...(baseUrl ? { files: filesApi(baseUrl) } : {}),

@@ -73,17 +73,22 @@ describe('YOLA Code (producto independiente)', () => {
     expect(saved['README.md']).toBe('contenido nuevo')
   })
 
-  test('Preguntar a YOLA: copia el archivo y abre el Chat', async () => {
+  test('Preguntar a YOLA: abre el panel del agente (sin clipboard)', async () => {
     const api = makeApi()
     const Comp = createApp(api)
     dispose = render(() => <Comp />, container)
     openLocalFile('README.md')
-    const writeText = vi.fn().mockResolvedValue(undefined)
+    const writeText = vi.fn()
     vi.stubGlobal('navigator', { clipboard: { writeText } })
     btnByText('💬').click()
-    await new Promise(r => setTimeout(r, 10))
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Bienvenido'))
-    expect(api.os.openApp).toHaveBeenCalledWith('chat')
+    await new Promise(r => setTimeout(r, 20))
+    // el panel del agente se abre (textarea del prompt + placeholder)
+    const panels = [...container.querySelectorAll('textarea')]
+    expect(panels.length).toBeGreaterThanOrEqual(2) // editor + prompt del agente
+    expect(panels.some(t => t.placeholder.includes('Pregúntale al agente'))).toBe(true)
+    // ya no copia al portapapeles ni abre el chat del OS
+    expect(writeText).not.toHaveBeenCalled()
+    expect(api.os.openApp).not.toHaveBeenCalled()
   })
 
   test('paleta de comandos: nuevo archivo', () => {
