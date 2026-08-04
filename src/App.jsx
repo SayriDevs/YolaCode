@@ -12,6 +12,7 @@ import { Explorer } from './editor/Explorer'
 import { Palette } from './editor/Palette'
 import { WorkspaceSearch } from './editor/WorkspaceSearch'
 import { AgentPanel } from './agent/AgentPanel'
+import { TerminalPanel } from './terminal/TerminalPanel'
 import { loadLocalWorkspaces, saveLocalWorkspaces, fetchOsWorkspaces, mergeWorkspaces, workspaceLabel } from './workspaces'
 
 export function createApp(api) {
@@ -44,6 +45,7 @@ export function createApp(api) {
     const [recent, setRecent] = createSignal([]) // [{path, name}] aperturas recientes
     const [knownWs, setKnownWs] = createSignal([]) // workspaces (OS + locales, persistidos)
     const [wsMenu, setWsMenu] = createSignal(false)
+    const [terminalOpen, setTerminalOpen] = createSignal(false)
     let taRef = null
     let saveTimer = null
     let rootRef = null
@@ -460,6 +462,7 @@ export function createApp(api) {
       if (mod && !e.shiftKey && e.key === 'p') { e.preventDefault(); openPalette('files'); return }
       if (mod && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v); setSearchIdx(0); return }
       if (mod && e.key === 'j') { e.preventDefault(); setAgentOpen(v => !v); return }
+      if (mod && e.key === '`') { e.preventDefault(); setTerminalOpen(v => !v); return }
       if (mod && e.key === 'w') { e.preventDefault(); if (activeIdx() !== -1) closeTab(activeIdx()); return }
       if (mod && e.key === 'Tab') {
         // Ctrl+Tab: ciclar tabs (solo si hay más de uno)
@@ -723,7 +726,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.4</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.5</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
@@ -740,6 +743,15 @@ export function createApp(api) {
             onPrefillConsumed={() => setAgentPrefill('')}
           />
         </div>
+
+        {/* Terminal integrada (Ctrl+`) — ejecuta en el workspace activo */}
+        <Show when={terminalOpen()}>
+          <TerminalPanel
+            daemonUrl={hasFiles ? api.os.daemonUrl : null}
+            cwd={workspace() || undefined}
+            onClose={() => setTerminalOpen(false)}
+          />
+        </Show>
 
         {/* ── Paleta ── */}
         <Palette
@@ -793,6 +805,7 @@ export function createApp(api) {
               <Shortcut keys="Ctrl+W" label="Cerrar pestaña" />
               <Shortcut keys="Ctrl+Tab" label="Siguiente pestaña" />
               <Shortcut keys="Ctrl+J" label="Panel del agente" />
+              <Shortcut keys="Ctrl+`" label="Terminal (build, tests, git)" />
               <Shortcut keys="Tab" label="Indentar (2 espacios)" />
               <Shortcut keys="Esc" label="Cerrar panel" />
               <Shortcut keys="F1" label="Este panel" />

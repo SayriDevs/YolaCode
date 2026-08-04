@@ -24,6 +24,7 @@ export function AgentPanel(props) {
   const [applyTarget, setApplyTarget] = createSignal(null) // {original, proposed, lang, hasSelection}
   const [sending, setSending] = createSignal(false)
   const [attached, setAttached] = createSignal(null) // {size} — selección adjunta vía ✨
+  const [tools, setTools] = createSignal([]) // [{id, name, args, status: 'run'|'ok'|'err', duration}]
   let inputRef
   let abortRef = null
 
@@ -105,6 +106,7 @@ export function AgentPanel(props) {
       const prompt = includeContext() ? text + contextText() : text
       setMessages(prev => [...prev, { role: 'user', text }])
       setMessages(prev => [...prev, { role: 'agent', text: '', pending: true }])
+      setTools([]) // las tool-calls del turno
       setInput('')
       setStreaming(true)
       abortRef = new AbortController()
@@ -116,6 +118,20 @@ export function AgentPanel(props) {
             const i = prev.length - 1
             return prev.map((m, idx) => idx === i ? { ...m, text: m.text + t } : m)
           })
+        },
+        onToolCall: (ev) => {
+          // el agente EMPEZÓ a usar una herramienta — visible al instante
+          setTools(prev => [...prev, {
+            id: ev.id,
+            name: ev.name || 'tool',
+            args: ev.arguments,
+            status: 'run',
+          }])
+        },
+        onToolResult: (ev) => {
+          setTools(prev => prev.map(t => t.id === ev.id
+            ? { ...t, status: ev.success ? 'ok' : 'err', duration: ev.duration_ms }
+            : t))
         },
         onError: (e) => {
           // el error DEBE finalizar el stream: la UI no puede quedar
@@ -254,16 +270,48 @@ export function AgentPanel(props) {
                     <span style={{ color: 'var(--text-muted)' }}>Pensando…</span>
                   </Show>
                   {m.text}
-                  <Show when={m.role === 'agent' && m.pending && m.text}>
-                    <span style={{ color: 'var(--text-muted)' }}>▍</span>
-                  </Show>
-                </div>
-                <Show when={m.role === 'agent' && !m.pending && extractCodeBlock(m.text) && props.getActiveFile?.()}>
-                  <button onClick={() => requestApply(m)} style={{
-                    ...miniBtn, 'margin-top': '4px', color: 'var(--success)',
-                    border: '1px solid color-mix(in srgb, var(--success) 40%, transparent)',
-                  }} className="yola-btn">💾 Aplicar al archivo…</button>
+                <Show when={m.role === 'agent' && m.pending && m.text}>
+                  <span style={{ color: 'var(--text-muted)' }}>▍</span>
                 </Show>
+              </div>
+              {/* Tool-calls del turno (el agente trabaja a la vista) */}
+              <Show when={m.role === 'agent' && tools().length}>
+                <div style={{ display: 'flex', 'flex-direction': 'column', gap: '3px', 'margin-top': '4px' }}>
+                  <For each={tools()}>
+                    {(t) => (
+                      <div style={{
+                        display: 'flex', 'align-items': 'center', gap: '6px', 'font-size': '10px',
+                        padding: '3px 7px', 'border-radius': '6px',
+                        background: t.status === 'run' ? 'color-mix(in srgb, var(--warning) 8%, transparent)'
+                          : t.status === 'ok' ? 'color-mix(in srgb, var(--success) 8%, transparent)'
+                          : 'color-mix(in srgb, var(--danger) 8%, transparent)',
+                        border: '1px solid var(--border-window)',
+                        'font-family': 'ui-monospace, Consolas, monospace',
+                        color: t.status === 'run' ? 'var(--warning)'
+                          : t.status === 'ok' ? 'var(--success)'
+                          : 'var(--danger)',
+                      }}>
+                        <span>{toolIcon(t.name)}</span>
+                        <span style={{ 'font-weight': 600 }}>{t.name}</span>
+                        <Show when={t.args && typeof t.args === 'object'}>
+                          <span style={{ color: 'var(--text-muted)', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap', 'max-width': '130px' }} title={JSON.stringify(t.args)}>
+                            {argBrief(t.args)}
+                          </span>
+                        </Show>
+                        <span style={{ 'margin-left': 'auto', 'font-size': '9px' }}>
+                          {t.status === 'run' ? '⏳' : t.status === 'ok' ? `✓${t.duration ? ` ${t.duration}ms` : ''}` : '✗'}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <Show when={m.role === 'agent' && !m.pending && extractCodeBlock(m.text) && props.getActiveFile?.()}>
+                <button onClick={() => requestApply(m)} style={{
+                  ...miniBtn, 'margin-top': '4px', color: 'var(--success)',
+                  border: '1px solid color-mix(in srgb, var(--success) 40%, transparent)',
+                }} className="yola-btn">💾 Aplicar al archivo…</button>
+              </Show>
               </div>
             )}
           </For>
@@ -399,4 +447,24 @@ const miniBtn = {
   border: '1px solid var(--border-window)', 'border-radius': '6px',
   background: 'transparent', color: 'var(--text-primary)',
   'font-size': '10.5px', 'font-family': 'var(--font)',
+}
+
+function toolIcon(name) {
+  if (!name) return '🛠'
+  if (name.includes('bash') || name.includes('shell') || name.includes('term')) return '💻'
+  if (name.includes('read') || name.includes('view')) return '📖'
+  if (name.includes('write') || name.includes('edit') || name.includes('patch')) return '✏️'
+  if (name.includes('glob') || name.includes('grep') || name.includes('search') || name.includes('find')) return '🔍'
+  if (name.includes('fetch') || name.includes('web') || name.includes('browser')) return '🌐'
+  if (name.includes('memory')) return '🧠'
+  if (name.includes('skill')) return '📚'
+  if (name.includes('todo')) return '✅'
+  return '🛠'
+}
+
+function argBrief(args) {
+  if (!args || typeof args !== 'object') return ''
+  // muestra la ruta o el primer string útil del argumento
+  const v = args.path || args.file || args.query || args.command || args.name || ''
+  return String(v).slice(0, 60)
 }

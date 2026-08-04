@@ -1,14 +1,14 @@
-// bump v0.6.3 → v0.6.4 (parseo {entries} + errores visibles)
+// bump v0.6.4 → v0.6.5 (terminal + tool-calls visibles)
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const NEW_VERSION = '0.6.4'
-const NEW_CHECKSUM = '9d608c4b9c8a86fd137f3976b6cbbc83921abbc805b1a26251acada16d0f2609'
-const FOOTER = 'Solid + Vite · v0.6.4'
+const NEW_VERSION = '0.6.5'
+const NEW_CHECKSUM = 'fb380b07f2d01d8a0f9c7a6acf4ba72b598054de8e7ada4a8a81e74811afb0b4'
+const FOOTER = 'Solid + Vite · v0.6.5'
 
 {
   const p = 'package.json'
   let c = readFileSync(p, 'utf8').replace(/^\uFEFF/, '')
-  c = c.replace('"0.6.3"', `"${NEW_VERSION}"`)
+  c = c.replace('"0.6.4"', `"${NEW_VERSION}"`)
   writeFileSync(p, c, 'utf8')
   console.log('package.json →', JSON.parse(c).version)
 }
@@ -17,7 +17,7 @@ const FOOTER = 'Solid + Vite · v0.6.4'
   const m = JSON.parse(readFileSync('manifest.json', 'utf8'))
   m.version = NEW_VERSION
   m.checksum = NEW_CHECKSUM
-  m.description = 'El editor nativo de YOLA. v0.6.4: parseo del formato real del bridge ({entries}) en files.list — el bug que ocultaba la lista como «Vacío»; errores SIEMPRE visibles en explorador y búsquedas (nunca silenciosos).'
+  m.description = 'El editor nativo de YOLA. v0.6.5: terminal integrada (Ctrl+`) — build/tests/git en el workspace vía /terminal/exec del bridge; tool-calls del agente VISIBLES (tarjetas 💻📖✏️ con estado y duración) — el agente trabaja a la vista.'
   writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n', 'utf8')
   console.log('manifest →', m.version)
 }

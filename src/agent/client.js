@@ -43,8 +43,8 @@ export function createAgentClient(baseUrl) {
     },
 
     /// Envía un prompt y emite el stream en vivo.
-    /// callbacks: { onToken(text), onDone(), onError(err), signal }
-    async sendPrompt(sessionId, prompt, { onToken, onDone, onError, signal } = {}) {
+    /// callbacks: { onToken(text), onToolCall(ev), onToolResult(ev), onDone(), onError(err), signal }
+    async sendPrompt(sessionId, prompt, { onToken, onToolCall, onToolResult, onDone, onError, signal } = {}) {
       let res
       try {
         res = await fetch(`${baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/prompt`, {
@@ -82,6 +82,8 @@ export function createAgentClient(baseUrl) {
             if (parsed.done) { onDone?.(); return }
             const ev = parsed.event
             if (ev.type === 'token' || ev.type === 'reasoning') onToken?.(ev.text)
+            else if (ev.type === 'tool_call') onToolCall?.(ev)
+            else if (ev.type === 'tool_result') onToolResult?.(ev)
             else if (ev.type === 'error') onError?.(new Error(ev.text || 'error del agente'))
           }
         }

@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA. v0.6.4: parseo del formato real del bridge ({entries}) en files.list — el bug que ocultaba la lista como «Vacío»; errores SIEMPRE visibles en explorador y búsquedas (nunca silenciosos).",
-  "version": "0.6.4",
+  "description": "El editor nativo de YOLA. v0.6.5: terminal integrada (Ctrl+`) — build/tests/git en el workspace vía /terminal/exec del bridge; tool-calls del agente VISIBLES (tarjetas 💻📖✏️ con estado y duración) — el agente trabaja a la vista.",
+  "version": "0.6.5",
   "entry": "dist/app.js",
-  "checksum": "11ee40b768dca87bb75c1a66e00cbcd45181c64bcf667037c26d84cc69fbd892",
+  "checksum": "8a6dff94a2c0a8192b07759c1a662c9a5626af6e93093cb839bf5eb9ce97dce0",
   "singleton": true,
   "permissions": [
     "notify",
