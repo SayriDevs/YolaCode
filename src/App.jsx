@@ -10,6 +10,7 @@ import { detectLanguage } from './editor/highlight'
 import { Editor } from './editor/Editor'
 import { Explorer } from './editor/Explorer'
 import { Palette } from './editor/Palette'
+import { WorkspaceSearch } from './editor/WorkspaceSearch'
 
 export function createApp(api) {
   return function YolaCodeWindow() {
@@ -26,6 +27,11 @@ export function createApp(api) {
     const [status, setStatus] = createSignal('')
     const [manifestOpen, setManifestOpen] = createSignal(false)
     const [manifestText, setManifestText] = createSignal('')
+    const [wsSearch, setWsSearch] = createSignal(false)
+    const [wsQuery, setWsQuery] = createSignal('')
+    const [cursor, setCursor] = createSignal(null) // {line, col}
+    const [helpOpen, setHelpOpen] = createSignal(false)
+    const [recent, setRecent] = createSignal([]) // [{path, name}] aperturas recientes
     let taRef = null
     let saveTimer = null
 
@@ -74,18 +80,31 @@ export function createApp(api) {
     }
 
     // ── Tabs ──
-    async function openFile(path, name) {
+    async function openFile(path, name, line) {
       const existing = tabs().findIndex(t => t.path === path)
       if (existing !== -1) {
         setActiveIdx(existing)
+        if (line) focusLine(line)
         return
       }
       try {
         const content = await filesApi.read(path)
         addTab({ path, name: name || path.split('/').pop() || path, lang: detectLanguage(name || path), content, dirty: false, local: false })
+        setRecent(prev => [{ path, name: name || path.split('/').pop() || path }, ...prev.filter(r => r.path !== path)].slice(0, 8))
+        if (line) setTimeout(() => focusLine(line), 50)
       } catch (e) {
         api.os.notify?.(`No se pudo abrir: ${e.message}`, 'error', 3000)
       }
+    }
+
+    function focusLine(line) {
+      if (!taRef) return
+      const t = active()
+      if (!t) return
+      const idx = t.content.split('\n').slice(0, line - 1).join('\n').length
+      const end = idx + (t.content.split('\n')[line - 1]?.length || 0)
+      taRef.focus()
+      taRef.setSelectionRange(idx, end)
     }
 
     function openLocal(name) {
@@ -154,6 +173,117 @@ export function createApp(api) {
       }
     }
 
+    // ── Acciones del Explorer ──
+    const [refresh, setRefresh] = createSignal(0)
+
+    function parentDirOf(item) {
+      // carpeta → dentro de ella; archivo → su mismo directorio
+      if (item.type === 'dir') return item.path
+      const parts = item.path.split('/')
+      parts.pop()
+      return parts.join('/')
+    }
+
+    function absPath(rel) {
+      return workspace() ? `${workspace().replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : rel
+    }
+
+    async function newFileIn(item) {
+      if (!workspace()) { flash('Abre un workspace primero'); return }
+      const base = parentDirOf(item)
+      const name = prompt('Nuevo archivo:', 'nuevo.md')
+      if (!name) return
+      const rel = base ? `${base}/${name}` : name
+      try {
+        await filesApi.create(absPath(rel), 'file')
+        setRefresh(r => r + 1)
+        await openFile(absPath(rel), name)
+        flash(`➕ ${name}`)
+      } catch (e) {
+        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+      }
+    }
+
+    async function newFolder(item) {
+      if (!workspace()) { flash('Abre un workspace primero'); return }
+      const base = parentDirOf(item)
+      const name = prompt('Nueva carpeta:', 'nueva-carpeta')
+      if (!name) return
+      const rel = base ? `${base}/${name}` : name
+      try {
+        await filesApi.create(absPath(rel), 'dir')
+        setRefresh(r => r + 1)
+        flash(`📁 ${name}`)
+      } catch (e) {
+        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+      }
+    }
+
+    async function renameItem(item) {
+      const parts = item.path.split('/')
+      const oldName = parts[parts.length - 1]
+      const name = prompt('Nuevo nombre:', oldName)
+      if (!name || name === oldName) return
+      const oldRel = item.path
+      const newRel = [...parts.slice(0, -1), name].join('/')
+      const oldAbs = item.absolute || absPath(oldRel)
+      const newAbs = absPath(newRel)
+      try {
+        if (item.type === 'file') {
+          const content = await filesApi.read(oldAbs)
+          await filesApi.create(newAbs, 'file')
+          await filesApi.write(newAbs, content)
+          await filesApi.remove(oldAbs)
+          // actualizar tabs que referenciaban el path viejo
+          setTabs(prev => prev.map(t => t.path === oldAbs ? { ...t, path: newAbs, name } : t))
+        } else {
+          // carpeta: renombrar = mover contenido (read→create→remove) por entrada
+          const entries = await filesApi.list(workspace(), oldRel)
+          for (const e of entries) {
+            const o = `${oldAbs}/${e.name}`
+            const n = `${newAbs}/${e.name}`
+            if (e.type === 'dir') {
+              await filesApi.create(n, 'dir')
+              // renombrar recursivo (mover contenido interno)
+              const inner = await filesApi.list(workspace(), `${oldRel}/${e.name}`)
+              for (const i of inner) {
+                await filesApi.create(`${n}/${i.name}`, i.type)
+                if (i.type === 'file') {
+                  await filesApi.write(`${n}/${i.name}`, await filesApi.read(`${o}/${i.name}`))
+                  await filesApi.remove(`${o}/${i.name}`)
+                }
+              }
+              await filesApi.remove(o)
+            } else {
+              await filesApi.create(n, 'file')
+              await filesApi.write(n, await filesApi.read(o))
+              await filesApi.remove(o)
+            }
+          }
+          await filesApi.remove(oldAbs)
+        }
+        setRefresh(r => r + 1)
+        flash(`✏️ ${oldName} → ${name}`)
+      } catch (e) {
+        api.os.notify?.(`Error al renombrar: ${e.message}`, 'error', 3000)
+      }
+    }
+
+    async function deleteItem(item) {
+      const confirmed = confirm(`¿Eliminar «${item.name}»${item.type === 'dir' ? ' y todo su contenido' : ''}?`)
+      if (!confirmed) return
+      const abs = item.absolute || absPath(item.path)
+      try {
+        await filesApi.remove(abs)
+        // cerrar tabs de ese archivo (o de archivos dentro de la carpeta)
+        setTabs(prev => prev.filter(t => !t.path.startsWith(abs)))
+        setRefresh(r => r + 1)
+        flash(`🗑️ ${item.name}`)
+      } catch (e) {
+        api.os.notify?.(`Error al eliminar: ${e.message}`, 'error', 3000)
+      }
+    }
+
     // ── Agente ──
     async function askYola(withSelection) {
       const t = active()
@@ -202,9 +332,14 @@ export function createApp(api) {
       { id: 'new', label: 'Nuevo archivo…', icon: '➕', run: newFile },
       { id: 'save', label: 'Guardar (Ctrl+S)', icon: '💾', run: saveTab },
       { id: 'find', label: 'Buscar en archivo (Ctrl+F)', icon: '🔍', run: () => { setSearchOpen(true); setSearchQuery(''); setSearchIdx(0) } },
+      { id: 'ws-find', label: 'Buscar en workspace (Ctrl+Shift+F)', icon: '🔎', run: () => { setWsSearch(true); setWsQuery('') } },
+      { id: 'rename-active', label: 'Renombrar archivo activo…', icon: '✏️', run: () => { const t = active(); if (t && !t.local) renameItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
+      { id: 'delete-active', label: 'Eliminar archivo activo…', icon: '🗑️', run: () => { const t = active(); if (t && !t.local) deleteItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
       { id: 'ask', label: 'Preguntar a YOLA', icon: '💬', run: () => askYola(false) },
       { id: 'improve', label: 'Mejorar selección con YOLA', icon: '✨', run: () => askYola(true) },
+      { id: 'help', label: 'Atajos de teclado (F1)', icon: '❓', run: () => setHelpOpen(true) },
       { id: 'manifest', label: 'Ver manifest', icon: '📜', run: openManifest },
+      ...(recent().length ? recent().map(r => ({ id: 'recent-' + r.path, label: `🕘 ${r.name}`, icon: '🕘', run: () => openFile(r.path, r.name) })) : []),
       ...(hasFiles ? [] : [{ id: 'local', label: 'Modo local: abre archivo demo…', icon: '📦', run: () => openLocal('README.md') }]),
     ]
 
@@ -212,10 +347,14 @@ export function createApp(api) {
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key === 'p') { e.preventDefault(); setPalette(v => !v); return }
       if (mod && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v); setSearchIdx(0); return }
+      if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); setWsSearch(v => !v); setWsQuery(''); return }
+      if (e.key === 'F1') { e.preventDefault(); setHelpOpen(v => !v); return }
       if (e.key === 'Escape') {
         if (palette()) setPalette(false)
         else if (searchOpen()) setSearchOpen(false)
         else if (manifestOpen()) setManifestOpen(false)
+        else if (wsSearch()) setWsSearch(false)
+        else if (helpOpen()) setHelpOpen(false)
       }
     }
 
@@ -268,7 +407,18 @@ export function createApp(api) {
             background: 'var(--bg-window-header)', display: 'flex', 'flex-direction': 'column',
           }}>
             {hasFiles ? (
-              <Explorer filesApi={filesApi} workspace={workspace()} onOpenFile={(p) => openFile(p, p.split('/').pop())} />
+              <Explorer
+                filesApi={filesApi}
+                workspace={workspace()}
+                refresh={refresh()}
+                onOpenFile={(p) => openFile(p, p.split('/').pop())}
+                onAction={(action, item) => {
+                  if (action === 'new-file') newFileIn(item)
+                  else if (action === 'new-folder') newFolder(item)
+                  else if (action === 'rename') renameItem(item)
+                  else if (action === 'delete') deleteItem(item)
+                }}
+              />
             ) : (
               <div style={{ padding: '8px', 'font-size': '11px', color: 'var(--text-muted)' }}>
                 <div style={{ 'margin-bottom': '6px' }}>Archivos locales:</div>
@@ -333,6 +483,7 @@ export function createApp(api) {
                 onChange={updateActive}
                 onSave={saveTab}
                 onTa={(el) => { taRef = el }}
+                onCursor={(line, col) => setCursor({ line, col })}
               />
             </Show>
 
@@ -376,14 +527,65 @@ export function createApp(api) {
                 <span>{active().name}</span>
                 <span>{detectLanguage(active().name)}</span>
                 <span>{active().content.split('\n').length} líneas · {active().content.trim() ? active().content.trim().split(/\s+/).length : 0} palabras</span>
+                <Show when={cursor()}>
+                  <span>Ln {cursor().line}, Col {cursor().col}</span>
+                </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.3.3</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.4.0</span>
+              <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
         </div>
 
         {/* ── Paleta ── */}
         <Palette open={palette()} commands={commands()} onClose={() => setPalette(false)} />
+
+        {/* ── Búsqueda en workspace ── */}
+        <Show when={hasFiles}>
+          <WorkspaceSearch
+            open={wsSearch()}
+            filesApi={filesApi}
+            workspace={workspace()}
+            query={wsQuery}
+            onQuery={setWsQuery}
+            onClose={() => setWsSearch(false)}
+            onOpenFile={(path, line) => { setWsSearch(false); openFile(path, path.split('/').pop(), line) }}
+          />
+        </Show>
+
+        {/* ── Atajos ── */}
+        <Show when={helpOpen()}>
+          <div style={{
+            position: 'absolute', inset: '0', zIndex: '40', background: 'var(--bg-overlay)',
+            display: 'flex', 'align-items': 'flex-start', 'justify-content': 'center', paddingTop: '50px',
+          }} onClick={() => setHelpOpen(false)}>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '440px', 'max-width': '92%', background: 'var(--bg-window)',
+                border: '1px solid var(--border-window)', 'border-radius': '10px',
+                'box-shadow': 'var(--shadow)', padding: '14px', 'font-size': '12px',
+                display: 'flex', 'flex-direction': 'column', gap: '6px', 'max-height': '70vh', 'overflow-y': 'auto',
+              }}
+            >
+              <div style={{ 'font-weight': 600, 'margin-bottom': '4px' }}>Atajos de teclado</div>
+              <Shortcut keys="Ctrl+P" label="Paleta de comandos" />
+              <Shortcut keys="Ctrl+F" label="Buscar en archivo" />
+              <Shortcut keys="Ctrl+Shift+F" label="Buscar en el workspace" />
+              <Shortcut keys="Ctrl+S" label="Guardar archivo" />
+              <Shortcut keys="Tab" label="Indentar (2 espacios)" />
+              <Shortcut keys="Esc" label="Cerrar panel" />
+              <Shortcut keys="F1" label="Este panel" />
+              <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Explorer (clic derecho)</div>
+              <div style={{ 'font-size': '11px', color: 'var(--text-secondary)' }}>Nuevo archivo · Nueva carpeta · Renombrar · Eliminar</div>
+              <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Agente</div>
+              <div style={{ 'font-size': '11px', color: 'var(--text-secondary)' }}>
+                Selecciona código y pulsa ✨ para pedir mejoras, o 💬 para trabajar el archivo completo en el Chat. Pega el resultado de vuelta en el editor.
+              </div>
+              <button onClick={() => setHelpOpen(false)} style={{ ...btnAccent, 'margin-top': '10px', alignSelf: 'flex-end' }}>Cerrar</button>
+            </div>
+          </div>
+        </Show>
 
         {/* ── Manifest ── */}
         <Show when={manifestOpen()}>
@@ -401,4 +603,17 @@ export function createApp(api) {
       </div>
     )
   }
+}
+
+function Shortcut(props) {
+  return (
+    <div style={{ display: 'flex', 'justify-content': 'space-between', 'align-items': 'center' }}>
+      <span>{props.label}</span>
+      <span style={{
+        'font-family': 'monospace', 'font-size': '10.5px', padding: '1px 7px',
+        border: '1px solid var(--border-window)', 'border-radius': '5px',
+        color: 'var(--text-secondary)', background: 'var(--bg-window-header)',
+      }}>{props.keys}</span>
+    </div>
+  )
 }

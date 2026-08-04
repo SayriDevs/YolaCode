@@ -2,9 +2,10 @@
 import { createSignal, createEffect, For, Show } from 'solid-js'
 
 export function Explorer(props) {
-  // props: { filesApi, workspace, onOpenFile }
+  // props: { filesApi, workspace, onOpenFile, onAction }
   const [dirs, setDirs] = createSignal({}) // path -> {loaded, entries[]} | null (cargando)
   const [root, setRoot] = createSignal(null)
+  const [menu, setMenu] = createSignal(null) // {x, y, item}
 
   async function loadDir(path) {
     setDirs(prev => ({ ...prev, [path]: null })) // null = cargando
@@ -17,15 +18,19 @@ export function Explorer(props) {
     }
   }
 
-  // Cuando cambia el workspace: reiniciar el árbol y cargar la raíz
+  // Cuando cambia el workspace (o refresh++): reiniciar el árbol
   createEffect(() => {
     const ws = props.workspace
-    if (ws !== root()) {
+    const rk = props.refresh || 0
+    if (ws !== root() || rk !== lastRefresh()) {
       setRoot(ws)
+      setLastRefresh(rk)
       setDirs({})
       if (ws) loadDir('/')
     }
   })
+
+  const [lastRefresh, setLastRefresh] = createSignal(0)
 
   function toggleDir(path) {
     if (dirs()[path]?.loaded) {
@@ -53,6 +58,11 @@ export function Explorer(props) {
           <div>
             <div
               onClick={() => (item.type === 'dir' ? toggleDir(item.path) : props.onOpenFile?.(item.absolute || item.path))}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setMenu({ x: e.clientX, y: e.clientY, item })
+              }}
               style={{
                 display: 'flex', 'align-items': 'center', gap: '4px', cursor: 'pointer',
                 padding: `3px 8px 3px ${6 + depth * 14}px`, 'border-radius': '4px',
@@ -89,6 +99,44 @@ export function Explorer(props) {
           {renderEntries('/', 0)}
         </Show>
       </div>
+
+      {/* Menú contextual */}
+      <Show when={menu()}>
+        <div
+          onClick={() => setMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}
+          style={{ position: 'fixed', inset: '0', zIndex: '50' }}
+        />
+        <div
+          style={{
+            position: 'fixed', left: `${Math.min(menu().x, window.innerWidth - 170)}px`,
+            top: `${Math.min(menu().y, window.innerHeight - 150)}px`, zIndex: '51',
+            background: 'var(--bg-window)', border: '1px solid var(--border-window)',
+            'border-radius': '8px', 'box-shadow': 'var(--shadow)', padding: '4px',
+            'min-width': '150px', 'font-size': '11px', 'font-family': 'var(--font)',
+          }}
+        >
+          <MenuItem label="➕ Nuevo archivo aquí" onClick={() => { props.onAction?.('new-file', menu().item); setMenu(null) }} />
+          <MenuItem label="📁 Nueva carpeta aquí" onClick={() => { props.onAction?.('new-folder', menu().item); setMenu(null) }} />
+          <MenuItem label="✏️ Renombrar" onClick={() => { props.onAction?.('rename', menu().item); setMenu(null) }} />
+          <MenuItem label="🗑️ Eliminar" danger onClick={() => { props.onAction?.('delete', menu().item); setMenu(null) }} />
+        </div>
+      </Show>
     </div>
+  )
+}
+
+function MenuItem(props) {
+  return (
+    <div
+      onClick={props.onClick}
+      style={{
+        padding: '5px 10px', 'border-radius': '5px', cursor: 'pointer',
+        color: props.danger ? '#e06c75' : 'var(--text-primary)',
+        'white-space': 'nowrap',
+      }}
+      onMouseOver={(e) => { e.currentTarget.style.background = 'var(--bg-window-header)' }}
+      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent' }}
+    >{props.label}</div>
   )
 }

@@ -15,11 +15,19 @@ const EDITOR_FONT = {
 }
 
 export function Editor(props) {
-  // props: { content, lang, onChange, onSave, dirty }
+  // props: { content, lang, onChange, onSave, dirty, onCursor, onTa }
   const html = createMemo(() => highlight(props.content, props.lang))
 
   let preRef
   let taRef
+
+  function reportCursor(el) {
+    if (!props.onCursor) return
+    const pos = el.selectionStart
+    const before = props.content.slice(0, pos)
+    const lines = before.split('\n')
+    props.onCursor(lines.length, lines[lines.length - 1].length + 1)
+  }
 
   function syncScroll(e) {
     if (preRef) {
@@ -63,11 +71,13 @@ export function Editor(props) {
         innerHTML={html()}
       />
       <textarea
-        ref={taRef}
+        ref={(el) => { taRef = el; props.onTa?.(el) }}
         value={props.content}
-        onInput={(e) => props.onChange(e.target.value)}
+        onInput={(e) => { props.onChange(e.target.value); reportCursor(e.target) }}
         onScroll={syncScroll}
         onKeyDown={onKeyDown}
+        onKeyUp={(e) => reportCursor(e.target)}
+        onSelect={(e) => reportCursor(e.target)}
         spellcheck={false}
         style={{
           position: 'absolute', inset: '0', border: 'none', outline: 'none', resize: 'none',
