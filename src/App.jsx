@@ -5,7 +5,7 @@
 // Compilada con Vite → dist/app.js (bundle autocontenido).
 // ──────────────────────────────────────────────────────────────
 import { createSignal, createMemo, For, Show, onCleanup, onMount } from 'solid-js'
-import { hasFilesApi, loadLocalFiles, saveLocalFiles, loadWorkspacePath, saveWorkspacePath } from './api'
+import { hasFilesApi, buildYolaFilesApi, loadLocalFiles, saveLocalFiles, loadWorkspacePath, saveWorkspacePath } from './api'
 import { detectLanguage } from './editor/highlight'
 import { Editor } from './editor/Editor'
 import { Explorer } from './editor/Explorer'
@@ -17,7 +17,10 @@ import { loadLocalWorkspaces, saveLocalWorkspaces, fetchOsWorkspaces, mergeWorks
 export function createApp(api) {
   return function YolaCodeWindow() {
     const hasFiles = hasFilesApi(api)
-    const filesApi = api?.os?.files || null
+    // filesApi PROPIO con el contrato real del bridge — YolaCode no
+    // depende del filesApi del anfitrión (el del OS usa /files/list,
+    // ruta inexistente → 404 sin ACAO → "CORS blocked" engañoso)
+    const filesApi = hasFiles ? buildYolaFilesApi(api.os.daemonUrl) : null
 
     const [workspace, setWorkspace] = createSignal(loadWorkspacePath())
     const [tabs, setTabs] = createSignal([]) // {path, name, lang, content, dirty, local}
@@ -720,7 +723,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.2</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.3</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>

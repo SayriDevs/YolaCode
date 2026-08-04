@@ -67,3 +67,59 @@ export function saveWorkspacePath(p) {
 export function hasFilesApi(api) {
   return !!(api?.os?.files && api?.os?.daemonUrl)
 }
+
+/**
+ * filesApi PROPIO de YolaCode — habla el contrato REAL del bridge
+ * (verificado en disco): GET /api/v1/files?directory&path, NO
+ * /files/list (ruta inexistente → 404 sin ACAO → el browser lo reporta
+ * como CORS). Así YolaCode funciona igual en el OS y en el .exe, sin
+ * depender del filesApi que el anfitrión provea.
+ */
+export function buildYolaFilesApi(daemonUrl) {
+  const base = `${daemonUrl}/api/v1`
+  const q = (obj) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined && v !== null && v !== '') p.set(k, v)
+    }
+    return p.size ? '?' + p.toString() : ''
+  }
+  return {
+    list: async (directory = '', path = '') => {
+      const res = await fetch(`${base}/files${q({ directory, path })}`)
+      if (!res.ok) throw new Error(`files HTTP ${res.status}`)
+      return res.json()
+    },
+    read: async (path) => {
+      const res = await fetch(`${base}/files/content${q({ path })}`)
+      if (!res.ok) throw new Error(`files/content HTTP ${res.status}`)
+      const data = await res.json()
+      return data.content
+    },
+    write: async (path, content) => {
+      const res = await fetch(`${base}/files/write`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content }),
+      })
+      if (!res.ok) throw new Error(`files/write HTTP ${res.status}`)
+    },
+    create: async (path, type = 'file') => {
+      const res = await fetch(`${base}/files/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, type }),
+      })
+      if (!res.ok) throw new Error(`files/create HTTP ${res.status}`)
+    },
+    remove: async (path) => {
+      const res = await fetch(`${base}/files/delete${q({ path })}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`files/delete HTTP ${res.status}`)
+    },
+    status: async (path) => {
+      const res = await fetch(`${base}/files/status${q({ path })}`)
+      if (!res.ok) throw new Error(`files/status HTTP ${res.status}`)
+      return res.json()
+    },
+  }
+}
