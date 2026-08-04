@@ -8,7 +8,7 @@
   "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido.",
   "version": "0.3.3",
   "entry": "dist/app.js",
-  "checksum": "95e867975f58f5098216038eb47a2eaf78afb7565a36cbcad8fb027a58dc9d79",
+  "checksum": "6c0d187b08f64c16786f1c0cd92876e4080c1f591de69a1380f7c508735e92ec",
   "singleton": true,
   "permissions": ["notify", "openApp", "files"]
 }
