@@ -88,7 +88,7 @@ export async function buildDesktopApi() {
         console.log(`[openApp] ${appId}`)
       },
       getApps: () => [
-        { id: 'yola-code', name: 'YOLA Code', manifest: { id: 'yola-code', name: 'YOLA Code', version: '0.5.0' } },
+        { id: 'yola-code', name: 'YOLA Code', manifest: { id: 'yola-code', name: 'YOLA Code', version: '0.5.1' } },
       ],
       // files SOLO si hay daemon — si no, la app cae a modo local
       ...(baseUrl ? { files: filesApi(baseUrl) } : {}),

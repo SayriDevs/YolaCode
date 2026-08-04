@@ -54,7 +54,12 @@ export function Explorer(props) {
     if (!ac.signal.aborted) { setHits(found); setHitLoading(false) }
   }
 
-  // Cuando cambia el workspace (o refresh++): reiniciar el árbol
+  const [lastRefresh, setLastRefresh] = createSignal(0)
+
+  // Cuando cambia el workspace (o refresh++): reiniciar el árbol.
+  // IMPORTANTE: declaraciones ANTES de efectos — el minificador reordena
+  // las const y un effect que use una señal declarada después explota
+  // con "Cannot access X before initialization" en el bundle final.
   createEffect(() => {
     const ws = props.workspace
     const rk = props.refresh || 0
@@ -67,8 +72,6 @@ export function Explorer(props) {
       if (ws) loadDir('/')
     }
   })
-
-  const [lastRefresh, setLastRefresh] = createSignal(0)
 
   function toggleDir(path) {
     if (dirs()[path]?.loaded) {

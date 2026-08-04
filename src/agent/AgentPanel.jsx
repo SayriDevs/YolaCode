@@ -145,18 +145,18 @@ export function AgentPanel(props) {
     setApplyTarget(null)
   }
 
+  const [flashMsg, setFlashMsg] = createSignal('')
+  function flash(m) {
+    setFlashMsg(m)
+    setTimeout(() => setFlashMsg(''), 2200)
+  }
+
   function confirmApply() {
     const t = applyTarget()
     if (!t) return
     props.onApplyToActive?.(t.proposed)
     setApplyTarget(null)
     flash('✨ Cambio aplicado al archivo')
-  }
-
-  const [flashMsg, setFlashMsg] = createSignal('')
-  function flash(m) {
-    setFlashMsg(m)
-    setTimeout(() => setFlashMsg(''), 2200)
   }
 
   return (

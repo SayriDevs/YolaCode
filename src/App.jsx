@@ -557,7 +557,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.5.0</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.5.1</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
