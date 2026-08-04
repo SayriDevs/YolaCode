@@ -95,6 +95,7 @@ export function Editor(props) {
     const posObj = { line: lns.length, col: lns[lns.length - 1].length + 1 }
     setCursor(posObj)
     props.onCursor?.(posObj.line, posObj.col)
+    props.onSelection?.(el.selectionStart !== el.selectionEnd)
   }
 
   function syncScroll(e) {

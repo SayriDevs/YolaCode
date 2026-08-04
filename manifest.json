@@ -5,10 +5,14 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.0: ronda UI/UX tras auditoría de 8 ángulos — undo/redo real, paleta de archivos fuzzy (Ctrl+P), cerrar tabs sucios con confirmación, rename recursivo sin pérdida, aplicar del agente con selección capturada, errores visibles en el .exe, sintaxis con tema del OS, focus visible, gutter virtualizado, highlight con cap para archivos grandes.",
-  "version": "0.6.0",
+  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.1: botones del agente diferenciados — 💬 conversar, ✨ mejorar selección (deshabilitado sin selección) con chip de selección adjunta visible.",
+  "version": "0.6.1",
   "entry": "dist/app.js",
-  "checksum": "bd5f5f2455312155f085b72ca1c98ba3fd6e899e62f16956c39bd3de2eb67b1f",
+  "checksum": "9cd9817c4fa5353fd5cebb050805d555a265954386d80094915b6e6cd975a3d1",
   "singleton": true,
-  "permissions": ["notify", "openApp", "files"]
+  "permissions": [
+    "notify",
+    "openApp",
+    "files"
+  ]
 }

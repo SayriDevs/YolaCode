@@ -33,6 +33,7 @@ export function createApp(api) {
     const [wsSearch, setWsSearch] = createSignal(false)
     const [wsQuery, setWsQuery] = createSignal('')
     const [cursor, setCursor] = createSignal(null) // {line, col}
+    const [hasSelection, setHasSelection] = createSignal(false)
     const [helpOpen, setHelpOpen] = createSignal(false)
     const [agentOpen, setAgentOpen] = createSignal(false)
     const [agentPrefill, setAgentPrefill] = createSignal('')
@@ -317,8 +318,9 @@ export function createApp(api) {
     }
 
     // ── Agente ──
+    // 💬 = conversar con YOLA · ✨ = mejorar la selección (diferencia REAL:
+    // ✨ solo está disponible con selección y precarga el prompt con ella)
     function askYola(withSelection) {
-      // El panel del agente vive en YolaCode (funciona en el OS y en el .exe)
       setAgentOpen(true)
       if (withSelection && taRef && taRef.selectionStart !== taRef.selectionEnd) {
         const t = active()
@@ -489,8 +491,18 @@ export function createApp(api) {
             <span style={{ 'font-size': '10.5px', color: 'var(--text-secondary)' }}>{status()}</span>
           </Show>
           <button onClick={() => openPalette('commands')} style={btnAccent} className="yola-btn" title="Paleta de comandos (Ctrl+Shift+P)" aria-label="Paleta de comandos">☰</button>
-          <button onClick={() => askYola(false)} style={btnStyle} className="yola-btn" title="Abrir el agente (Ctrl+J)" aria-label="Abrir el agente">💬</button>
-          <button onClick={() => askYola(true)} style={btnAccent} className="yola-btn" title="Mejorar selección con YOLA" aria-label="Mejorar selección con YOLA">✨</button>
+          <button onClick={() => askYola(false)} style={btnStyle} className="yola-btn" title="Conversar con YOLA (Ctrl+J)" aria-label="Conversar con YOLA">💬</button>
+          <button
+            onClick={() => askYola(true)}
+            disabled={!hasSelection()}
+            style={{
+              ...btnAccent,
+              opacity: hasSelection() ? 1 : 0.4,
+              cursor: hasSelection() ? 'pointer' : 'not-allowed',
+            }}
+            title={hasSelection() ? 'Mejorar la selección con YOLA' : 'Selecciona código para mejorarlo'}
+            aria-label="Mejorar selección con YOLA"
+          >✨</button>
           <button onClick={openManifest} style={btnStyle} className="yola-btn" title="Ver manifest" aria-label="Ver manifest">📜</button>
         </div>
 
@@ -579,6 +591,7 @@ export function createApp(api) {
                 onSave={saveTab}
                 onTa={(el) => { taRef = el }}
                 onCursor={(line, col) => setCursor({ line, col })}
+                onSelection={setHasSelection}
               />
             </Show>
 

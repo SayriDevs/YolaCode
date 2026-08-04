@@ -23,6 +23,7 @@ export function AgentPanel(props) {
   const [error, setError] = createSignal('')
   const [applyTarget, setApplyTarget] = createSignal(null) // {original, proposed, lang, hasSelection}
   const [sending, setSending] = createSignal(false)
+  const [attached, setAttached] = createSignal(null) // {size} — selección adjunta vía ✨
   let inputRef
   let abortRef = null
 
@@ -54,16 +55,22 @@ export function AgentPanel(props) {
     }
   })
 
-  // prefill (selección para mejorar) viene de App
+  // prefill (selección para mejorar) viene de App — visible como chip
   createEffect(() => {
     const p = props.prefill
     if (p) {
       setInput(p)
       setIncludeContext(true)
+      setAttached({ size: p.length })
       props.onPrefillConsumed?.()
       setTimeout(() => inputRef?.focus(), 60)
     }
   })
+
+  function clearAttached() {
+    setAttached(null)
+    setInput('')
+  }
 
   function pickSession(id) {
     setSessionId(id)
@@ -269,6 +276,23 @@ export function AgentPanel(props) {
         <div style={{ 'border-top': '1px solid var(--border-window)', padding: '6px', 'flex-shrink': '0' }}>
           <Show when={flashMsg()}>
             <div style={{ 'font-size': '10.5px', color: 'var(--success)', padding: '0 2px 4px' }}>{flashMsg()}</div>
+          </Show>
+          <Show when={attached()}>
+            <div style={{
+              display: 'flex', 'align-items': 'center', gap: '5px', padding: '3px 8px', 'margin-bottom': '5px',
+              'border-radius': '7px', 'font-size': '10px', color: 'var(--accent)',
+              background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+            }}>
+              <span>📎 selección adjunta</span>
+              <span style={{ color: 'var(--text-secondary)' }}>({attached().size} caracteres)</span>
+              <div style={{ flex: 1 }} />
+              <span
+                onClick={clearAttached}
+                style={{ cursor: 'pointer', 'font-size': '10.5px', color: 'var(--text-secondary)' }}
+                title="Quitar selección del prompt"
+              >✕</span>
+            </div>
           </Show>
           <textarea
             ref={inputRef}
