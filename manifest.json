@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.4: explorador con acciones (crear/renombrar/eliminar), búsqueda en workspace (Ctrl+Shift+F), posición del cursor y atajos (F1).",
-  "version": "0.4.0",
+  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.4.1: números de línea, línea activa, autocompletado ligero, atajos de edición (Ctrl+D, Ctrl+/, Alt+↑↓), búsqueda por nombre en el explorador.",
+  "version": "0.4.1",
   "entry": "dist/app.js",
-  "checksum": "c24698d9f4307bfed2b435e47abb0747a35d62d03733b7d6b0672b5fd874fe5b",
+  "checksum": "703f217b15e725d95b0fc748da083bf293f7b64ff95d0f24210b11d45a36126e",
   "singleton": true,
   "permissions": ["notify", "openApp", "files"]
 }

@@ -1,11 +1,12 @@
 // ── YOLA Code — Búsqueda en el workspace (Ctrl+Shift+F) ─────
 // Recorre el árbol del workspace, lee los archivos y lista los
-// matches. Clic en un resultado → abre el archivo en esa línea.
+// matches AGRUPADOS POR ARCHIVO. Clic en un resultado → abre el
+// archivo en esa línea.
 import { createSignal, For, Show } from 'solid-js'
 
 export function WorkspaceSearch(props) {
   // props: { filesApi, workspace, open, query, onClose, onOpenFile }
-  const [results, setResults] = createSignal(null) // null = sin búsqueda aún | [] = sin matches | [{path, name, line, text}]
+  const [results, setResults] = createSignal(null) // null = sin búsqueda aún | [] = sin matches | [{path, name, lines:[{line,text}]}]
   const [running, setRunning] = createSignal(false)
 
   let abortRef = null
@@ -19,7 +20,7 @@ export function WorkspaceSearch(props) {
     const ac = new AbortController()
     abortRef = ac
 
-    const found = []
+    const byFile = new Map() // path -> {path, name, lines: []}
     const ql = q.toLowerCase()
 
     async function walk(dir, depth) {
@@ -42,12 +43,18 @@ export function WorkspaceSearch(props) {
           try {
             const content = await props.filesApi.read(item.absolute || item.path)
             const lines = String(content).split('\n')
+            let bucket = null
             for (let li = 0; li < lines.length; li++) {
               if (lines[li].toLowerCase().includes(ql)) {
-                found.push({ path: item.absolute || item.path, name, line: li + 1, text: lines[li].trim().slice(0, 120) })
-                if (found.length >= 200) return // tope de resultados
+                if (!bucket) {
+                  bucket = { path: item.absolute || item.path, name, lines: [] }
+                  byFile.set(bucket.path, bucket)
+                }
+                bucket.lines.push({ line: li + 1, text: lines[li].trim().slice(0, 120) })
+                if (bucket.lines.length >= 50) break // tope por archivo
               }
             }
+            if (byFile.size >= 20) return // tope de archivos
           } catch { /* archivo ilegible: saltar */ }
         }
       }
@@ -55,7 +62,7 @@ export function WorkspaceSearch(props) {
 
     await walk('/', 0)
     if (!ac.signal.aborted) {
-      setResults(found)
+      setResults([...byFile.values()])
       setRunning(false)
     }
   }
@@ -72,7 +79,7 @@ export function WorkspaceSearch(props) {
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
-            width: '560px', 'max-width': '92%', background: 'var(--bg-window)',
+            width: '600px', 'max-width': '92%', background: 'var(--bg-window)',
             border: '1px solid var(--border-window)', 'border-radius': '10px',
             'box-shadow': 'var(--shadow)', overflow: 'hidden', display: 'flex', 'flex-direction': 'column',
           }}
@@ -97,7 +104,7 @@ export function WorkspaceSearch(props) {
             <button onClick={search} style={btn}>Buscar</button>
             <button onClick={props.onClose} style={btn} aria-label="Cerrar búsqueda">✕</button>
           </div>
-          <div style={{ 'max-height': '320px', 'overflow-y': 'auto', padding: '4px 6px 8px' }}>
+          <div style={{ 'max-height': '340px', 'overflow-y': 'auto', padding: '4px 6px 8px' }}>
             <Show when={running()}>
               <div style={{ padding: '12px', 'font-size': '11px', color: 'var(--text-muted)', 'text-align': 'center' }}>Buscando…</div>
             </Show>
@@ -107,16 +114,32 @@ export function WorkspaceSearch(props) {
               </div>
             </Show>
             <For each={results()}>
-              {(r) => (
-                <div
-                  onClick={() => props.onOpenFile?.(r.path, r.line)}
-                  style={{
-                    padding: '6px 8px', 'border-radius': '6px', cursor: 'pointer', 'font-size': '11px',
-                    'font-family': 'monospace', display: 'flex', gap: '8px',
-                  }}
-                >
-                  <span style={{ color: 'var(--accent)', 'flex-shrink': 0 }}>{r.name}:{r.line}</span>
-                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{r.text}</span>
+              {(f) => (
+                <div style={{ 'margin-bottom': '4px' }}>
+                  {/* Header del archivo */}
+                  <div style={{
+                    padding: '4px 8px', 'font-size': '11px', 'font-weight': 600,
+                    color: 'var(--accent)', 'font-family': 'monospace', cursor: 'pointer',
+                    display: 'flex', gap: '6px', 'align-items': 'center', 'border-radius': '5px',
+                  }} onClick={() => props.onOpenFile?.(f.path, f.lines[0]?.line || 1)}>
+                    <span>📄</span>
+                    <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{f.name}</span>
+                    <span style={{ color: 'var(--text-muted)', 'font-weight': 400, 'font-size': '10px' }}>{f.lines.length} match{f.lines.length === 1 ? '' : 'es'}</span>
+                  </div>
+                  <For each={f.lines}>
+                    {(r) => (
+                      <div
+                        onClick={() => props.onOpenFile?.(f.path, r.line)}
+                        style={{
+                          padding: '3px 8px 3px 22px', 'border-radius': '5px', cursor: 'pointer',
+                          'font-size': '11px', 'font-family': 'monospace', display: 'flex', gap: '8px',
+                        }}
+                      >
+                        <span style={{ color: 'var(--text-muted)', 'flex-shrink': 0 }}>{r.line}</span>
+                        <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{r.text}</span>
+                      </div>
+                    )}
+                  </For>
                 </div>
               )}
             </For>

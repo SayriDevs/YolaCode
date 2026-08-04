@@ -6,6 +6,11 @@ export function Explorer(props) {
   const [dirs, setDirs] = createSignal({}) // path -> {loaded, entries[]} | null (cargando)
   const [root, setRoot] = createSignal(null)
   const [menu, setMenu] = createSignal(null) // {x, y, item}
+  const [filter, setFilter] = createSignal('') // búsqueda de archivos por nombre
+  const [hits, setHits] = createSignal(null) // null = sin buscar | [] = sin matches | [{path, absolute, name}]
+  const [hitLoading, setHitLoading] = createSignal(false)
+  let debounceRef = null
+  let walkAbort = null
 
   async function loadDir(path) {
     setDirs(prev => ({ ...prev, [path]: null })) // null = cargando
@@ -18,6 +23,37 @@ export function Explorer(props) {
     }
   }
 
+  // Búsqueda por nombre: recorre el árbol completo (límite prof. 6)
+  async function searchFiles(q) {
+    if (!q) { setHits(null); setHitLoading(false); return }
+    setHitLoading(true)
+    if (walkAbort) walkAbort.abort()
+    const ac = new AbortController()
+    walkAbort = ac
+    const found = []
+    const ql = q.toLowerCase()
+
+    async function walk(dir, depth) {
+      if (ac.signal.aborted) return
+      if (depth > 6) return
+      let entries
+      try {
+        entries = await props.filesApi.list(props.workspace, dir === '/' ? '' : dir)
+      } catch { return }
+      for (const item of entries) {
+        if (ac.signal.aborted) return
+        if (item.type === 'dir') await walk(item.path, depth + 1)
+        else if ((item.name || '').toLowerCase().includes(ql)) {
+          found.push({ path: item.path, absolute: item.absolute || item.path, name: item.name })
+          if (found.length >= 100) return
+        }
+      }
+    }
+
+    await walk('/', 0)
+    if (!ac.signal.aborted) { setHits(found); setHitLoading(false) }
+  }
+
   // Cuando cambia el workspace (o refresh++): reiniciar el árbol
   createEffect(() => {
     const ws = props.workspace
@@ -26,6 +62,8 @@ export function Explorer(props) {
       setRoot(ws)
       setLastRefresh(rk)
       setDirs({})
+      setFilter('')
+      setHits(null)
       if (ws) loadDir('/')
     }
   })
@@ -90,13 +128,63 @@ export function Explorer(props) {
         'border-bottom': '1px solid var(--border-window)', overflow: 'hidden',
         'text-overflow': 'ellipsis', 'white-space': 'nowrap', 'font-family': 'monospace',
       }} title={props.workspace}>{props.workspace || 'sin workspace'}</div>
+      <Show when={props.workspace}>
+        <div style={{ padding: '4px 6px', 'border-bottom': '1px solid var(--border-window)' }}>
+          <input
+            value={filter()}
+            onInput={(e) => {
+              setFilter(e.target.value)
+              clearTimeout(debounceRef)
+              debounceRef = setTimeout(() => searchFiles(e.target.value.trim()), 280)
+            }}
+            placeholder="Buscar archivo por nombre…"
+            style={{
+              width: '100%', padding: '4px 7px', border: '1px solid var(--border-window)',
+              'border-radius': '5px', background: 'var(--bg-desktop)', color: 'var(--text-primary)',
+              outline: 'none', 'font-size': '11px', 'font-family': 'var(--font)', 'box-sizing': 'border-box',
+            }}
+          />
+        </div>
+      </Show>
       <div style={{ flex: 1, 'overflow-y': 'auto', padding: '4px 0 8px' }}>
-        <Show when={props.workspace} fallback={
-          <div style={{ padding: '12px 8px', 'font-size': '11px', color: 'var(--text-muted)' }}>
-            Sin workspace. Usa ☰ para abrir uno.
-          </div>
-        }>
-          {renderEntries('/', 0)}
+        <Show when={filter() && hits() !== null}>
+          <Show when={hitLoading()} fallback={
+            hits().length ? (
+              <For each={hits()}>
+                {(h) => (
+                  <div
+                    onClick={() => props.onOpenFile?.(h.absolute)}
+                    style={{
+                      display: 'flex', 'align-items': 'center', gap: '4px', cursor: 'pointer',
+                      padding: '3px 8px 3px 6px', 'border-radius': '4px',
+                      'font-size': '11px', 'font-family': 'monospace', overflow: 'hidden',
+                      'text-overflow': 'ellipsis', 'white-space': 'nowrap',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <span>📄</span>
+                    <span>{h.name}</span>
+                    <span style={{ color: 'var(--text-muted)', 'font-size': '10px', 'margin-left': 'auto', overflow: 'hidden', 'text-overflow': 'ellipsis' }}>{h.path}</span>
+                  </div>
+                )}
+              </For>
+            ) : (
+              <div style={{ padding: '8px', 'font-size': '11px', color: 'var(--text-muted)' }}>
+                Sin archivos con «{filter()}»
+              </div>
+            )
+          }>
+            <div style={{ padding: '8px', 'font-size': '11px', color: 'var(--text-muted)' }}>Buscando…</div>
+          </Show>
+        </Show>
+        <Show when={!filter() || hits() === null}>
+          <Show when={props.workspace} fallback={
+            <div style={{ padding: '12px 8px', 'font-size': '11px', color: 'var(--text-muted)' }}>
+              Sin workspace. Usa ☰ para abrir uno.
+            </div>
+          }>
+            {renderEntries('/', 0)}
+          </Show>
         </Show>
       </div>
 

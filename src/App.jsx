@@ -347,6 +347,14 @@ export function createApp(api) {
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key === 'p') { e.preventDefault(); setPalette(v => !v); return }
       if (mod && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v); setSearchIdx(0); return }
+      if (mod && e.key === 'w') { e.preventDefault(); if (activeIdx() !== -1) closeTab(activeIdx()); return }
+      if (mod && e.key === 'Tab') {
+        // Ctrl+Tab: ciclar tabs (solo si hay más de uno)
+        e.preventDefault()
+        const n = tabs().length
+        if (n > 1) setActiveIdx(i => (e.shiftKey ? (i - 1 + n) % n : (i + 1) % n))
+        return
+      }
       if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); setWsSearch(v => !v); setWsQuery(''); return }
       if (e.key === 'F1') { e.preventDefault(); setHelpOpen(v => !v); return }
       if (e.key === 'Escape') {
@@ -531,7 +539,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.4.0</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.4.1</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
@@ -573,9 +581,17 @@ export function createApp(api) {
               <Shortcut keys="Ctrl+F" label="Buscar en archivo" />
               <Shortcut keys="Ctrl+Shift+F" label="Buscar en el workspace" />
               <Shortcut keys="Ctrl+S" label="Guardar archivo" />
+              <Shortcut keys="Ctrl+D" label="Duplicar línea o selección" />
+              <Shortcut keys="Ctrl+/" label="Comentar / descomentar" />
+              <Shortcut keys="Alt+↑ ↓" label="Mover línea" />
+              <Shortcut keys="Ctrl+W" label="Cerrar pestaña" />
+              <Shortcut keys="Ctrl+Tab" label="Siguiente pestaña" />
               <Shortcut keys="Tab" label="Indentar (2 espacios)" />
               <Shortcut keys="Esc" label="Cerrar panel" />
               <Shortcut keys="F1" label="Este panel" />
+              <div style={{ 'font-size': '10.5px', color: 'var(--text-muted)', 'margin-top': '2px' }}>
+                Escribe y el editor sugiere palabras del archivo (Enter acepta, ↑↓ navega).
+              </div>
               <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Explorer (clic derecho)</div>
               <div style={{ 'font-size': '11px', color: 'var(--text-secondary)' }}>Nuevo archivo · Nueva carpeta · Renombrar · Eliminar</div>
               <div style={{ 'font-weight': 600, 'margin-top': '10px', 'margin-bottom': '4px' }}>Agente</div>
