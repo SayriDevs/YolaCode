@@ -3,7 +3,7 @@
 // (cmd /C en Windows). cwd = workspace activo. Historial con ↑↓,
 // Ctrl+L limpia. Sin streaming (fase 2) — ejecuta y muestra.
 // ──────────────────────────────────────────────────────────────
-import { createSignal, For, Show } from 'solid-js'
+import { createSignal, For, Show, onMount } from 'solid-js'
 
 export function TerminalPanel(props) {
   // props: { daemonUrl, cwd, onClose }
@@ -14,6 +14,9 @@ export function TerminalPanel(props) {
   const [histIdx, setHistIdx] = createSignal(-1)
   let inputRef
   let outRef
+
+  // el foco entra al input al abrir (nunca huérfano)
+  onMount(() => inputRef?.focus())
 
   function scrollBottom() {
     if (outRef) outRef.scrollTop = outRef.scrollHeight
@@ -52,6 +55,7 @@ export function TerminalPanel(props) {
 
   function onKeyDown(e) {
     if (e.key === 'Enter') { e.preventDefault(); run(); return }
+    if (e.key === 'Escape') { e.preventDefault(); props.onClose(); return }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
       const h = history()

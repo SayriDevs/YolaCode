@@ -60,6 +60,12 @@ export function createApp(api) {
       }
     }
 
+    // Al cerrar cualquier overlay, el foco vuelve al editor (nunca se queda
+    // huérfano — "cosa estúpida" que el usuario nota al instante)
+    function focusEditor() {
+      taRef?.focus()
+    }
+
     const active = createMemo(() => tabs()[activeIdx()] || null)
 
     const searchMatches = createMemo(() => {
@@ -123,6 +129,14 @@ export function createApp(api) {
     }
 
     function pickWorkspace(root) {
+      // cambiar de workspace cierra los archivos abiertos (como VS Code)
+      const dirty = tabs().find(t => t.dirty)
+      if (dirty && !confirm('Cambiar de workspace cerrará los archivos abiertos. ¿Continuar?')) {
+        setWsMenu(false)
+        return
+      }
+      setTabs([])
+      setActiveIdx(-1)
       setWorkspace(root)
       saveWorkspacePath(root)
       setWsMenu(false)
@@ -353,9 +367,14 @@ export function createApp(api) {
     }
 
     // ── Agente ──
-    // 💬 = conversar con YOLA · ✨ = mejorar la selección (diferencia REAL:
-    // ✨ solo está disponible con selección y precarga el prompt con ella)
+    // 💬 = toggle del panel (abre y cierra) · ✨ = mejorar la selección
     function askYola(withSelection) {
+      if (!withSelection && agentOpen()) {
+        // 💬 con el panel abierto → ocultarlo (toggle simétrico)
+        setAgentOpen(false)
+        taRef?.focus()
+        return
+      }
       setAgentOpen(true)
       if (withSelection && taRef && taRef.selectionStart !== taRef.selectionEnd) {
         const t = active()
@@ -434,6 +453,12 @@ export function createApp(api) {
     }
 
     function openPalette(mode) {
+      // toggle simétrico: mismo modo abierto → cerrar; otro modo → cambiar
+      if (palette() && paletteMode() === mode) {
+        setPalette(false)
+        taRef?.focus()
+        return
+      }
       setPaletteMode(mode)
       setPalette(true)
       if (mode === 'files') collectFiles()
@@ -474,11 +499,11 @@ export function createApp(api) {
       if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); setWsSearch(v => !v); setWsQuery(''); return }
       if (e.key === 'F1') { e.preventDefault(); setHelpOpen(v => !v); return }
       if (e.key === 'Escape') {
-        if (palette()) setPalette(false)
-        else if (searchOpen()) setSearchOpen(false)
-        else if (manifestOpen()) setManifestOpen(false)
-        else if (wsSearch()) setWsSearch(false)
-        else if (helpOpen()) setHelpOpen(false)
+        if (palette()) { setPalette(false); focusEditor() }
+        else if (searchOpen()) { setSearchOpen(false); focusEditor() }
+        else if (manifestOpen()) { setManifestOpen(false); focusEditor() }
+        else if (wsSearch()) { setWsSearch(false); focusEditor() }
+        else if (helpOpen()) { setHelpOpen(false); focusEditor() }
       }
     }
 
@@ -726,7 +751,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.5</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.6</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
@@ -735,7 +760,7 @@ export function createApp(api) {
           <AgentPanel
             api={api}
             open={agentOpen()}
-            onClose={() => setAgentOpen(false)}
+            onClose={() => { setAgentOpen(false); focusEditor() }}
             getActiveFile={() => active()}
             getSelection={() => taRef ? { s: taRef.selectionStart, e: taRef.selectionEnd } : null}
             onApplyToActive={applyToActive}
@@ -749,7 +774,7 @@ export function createApp(api) {
           <TerminalPanel
             daemonUrl={hasFiles ? api.os.daemonUrl : null}
             cwd={workspace() || undefined}
-            onClose={() => setTerminalOpen(false)}
+            onClose={() => { setTerminalOpen(false); focusEditor() }}
           />
         </Show>
 
@@ -760,7 +785,7 @@ export function createApp(api) {
           commands={commands()}
           files={paletteFiles()}
           recent={recent()}
-          onClose={() => setPalette(false)}
+          onClose={() => { setPalette(false); focusEditor() }}
           onOpenFile={(f) => { openFile(f.path, f.name) }}
         />
 
@@ -772,7 +797,7 @@ export function createApp(api) {
             workspace={workspace()}
             query={wsQuery}
             onQuery={setWsQuery}
-            onClose={() => setWsSearch(false)}
+            onClose={() => { setWsSearch(false); focusEditor() }}
             onOpenFile={(path, line) => { setWsSearch(false); openFile(path, path.split('/').pop(), line) }}
           />
         </Show>
@@ -782,7 +807,7 @@ export function createApp(api) {
           <div style={{
             position: 'absolute', inset: '0', zIndex: '40', background: 'var(--bg-overlay)',
             display: 'flex', 'align-items': 'flex-start', 'justify-content': 'center', paddingTop: '50px',
-          }} onClick={() => setHelpOpen(false)}>
+          }} onClick={() => { setHelpOpen(false); focusEditor() }}>
             <div
               onClick={(e) => e.stopPropagation()}
               style={{
@@ -820,7 +845,7 @@ export function createApp(api) {
                 Cuando el agente responda con código, usa «💾 Aplicar al archivo» para ver el preview y escribir en disco.
                 Las sesiones se comparten con el Chat del OS (tag #yola-code).
               </div>
-              <button onClick={() => setHelpOpen(false)} style={{ ...btnAccent, 'margin-top': '10px', alignSelf: 'flex-end' }}>Cerrar</button>
+              <button onClick={() => { setHelpOpen(false); focusEditor() }} style={{ ...btnAccent, 'margin-top': '10px', alignSelf: 'flex-end' }}>Cerrar</button>
             </div>
           </div>
         </Show>
@@ -832,7 +857,7 @@ export function createApp(api) {
             background: 'var(--bg-desktop)', color: 'var(--text-primary)', overflow: 'auto',
             'font-size': '11px', 'line-height': '1.5', 'font-family': 'monospace',
           }}>{manifestText()}</pre>
-          <button onClick={() => setManifestOpen(false)} style={{
+          <button onClick={() => { setManifestOpen(false); focusEditor() }} style={{
             position: 'absolute', top: '10px', right: '10px', zIndex: '31', padding: '5px 12px',
             border: '1px solid var(--border-window)', 'border-radius': '5px', background: 'var(--bg-window)',
             color: 'var(--text-primary)', cursor: 'pointer', 'font-family': 'var(--font)',

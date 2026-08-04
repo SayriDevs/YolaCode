@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA. v0.6.5: terminal integrada (Ctrl+`) — build/tests/git en el workspace vía /terminal/exec del bridge; tool-calls del agente VISIBLES (tarjetas 💻📖✏️ con estado y duración) — el agente trabaja a la vista.",
-  "version": "0.6.5",
+  "description": "El editor nativo de YOLA. v0.6.6: UX simétrica — 💬 y Ctrl+P abren Y CIERRAN (toggle), Escape cierra terminal y menú contextual, el foco vuelve al editor al cerrar cualquier panel, la terminal recibe foco al abrir, cambiar de workspace cierra los tabs viejos con confirmación.",
+  "version": "0.6.6",
   "entry": "dist/app.js",
-  "checksum": "8a6dff94a2c0a8192b07759c1a662c9a5626af6e93093cb839bf5eb9ce97dce0",
+  "checksum": "52dae63b1f7c724aac94c83f9a9ba335f70276b9f4997fdcf31f76fcbabbb1bc",
   "singleton": true,
   "permissions": [
     "notify",

@@ -6,6 +6,8 @@ export function Explorer(props) {
   const [dirs, setDirs] = createSignal({}) // path -> {loaded, entries[]} | null (cargando)
   const [root, setRoot] = createSignal(null)
   const [menu, setMenu] = createSignal(null) // {x, y, item}
+  let menuRef = null
+  let menuBackdropRef = null
   const [filter, setFilter] = createSignal('') // búsqueda de archivos por nombre
   const [hits, setHits] = createSignal(null) // null = sin buscar | [] = sin matches | [{path, absolute, name}]
   const [hitLoading, setHitLoading] = createSignal(false)
@@ -58,6 +60,11 @@ export function Explorer(props) {
   }
 
   const [lastRefresh, setLastRefresh] = createSignal(0)
+
+  // el menú contextual recibe foco al abrir (para que Escape cierre)
+  createEffect(() => {
+    if (menu() && menuBackdropRef) menuBackdropRef.focus()
+  })
 
   // Cuando cambia el workspace (o refresh++): reiniciar el árbol.
   // IMPORTANTE: declaraciones ANTES de efectos — el minificador reordena
@@ -206,9 +213,15 @@ export function Explorer(props) {
         <div
           onClick={() => setMenu(null)}
           onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null) }}
+          tabIndex={0}
+          ref={menuBackdropRef}
           style={{ position: 'fixed', inset: '0', zIndex: '50' }}
         />
         <div
+          ref={menuRef}
+          tabIndex={-1}
+          onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null) }}
           style={{
             position: 'fixed', left: `${Math.min(menu().x, window.innerWidth - 170)}px`,
             top: `${Math.min(menu().y, window.innerHeight - 150)}px`, zIndex: '51',

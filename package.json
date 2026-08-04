@@ -1,7 +1,7 @@
 {
   "name": "yola-code",
   "private": true,
-  "version": "0.6.5",
+  "version": "0.6.6",
   "type": "module",
   "description": "YOLA Code â€” el editor nativo de YOLA. Workspace real, tabs, syntax highlighting, paleta de comandos y agente integrado.",
   "scripts": {
