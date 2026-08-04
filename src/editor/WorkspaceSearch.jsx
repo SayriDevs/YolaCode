@@ -94,6 +94,7 @@ export function WorkspaceSearch(props) {
                 debounce = setTimeout(() => { if (props.open) search() }, 350)
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') search(); if (e.key === 'Escape') props.onClose() }}
+              className="yola-input"
               placeholder="Buscar en todos los archivos del workspace…"
               style={{
                 flex: 1, padding: '6px 10px', border: '1px solid var(--border-window)', 'border-radius': '6px',

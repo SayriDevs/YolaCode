@@ -1,4 +1,4 @@
-// ── YOLA Code — App (el editor nativo de YOLA) ───────────────
+﻿// ── YOLA Code — App (el editor nativo de YOLA) ───────────────
 // Mejor que Cursor/Codex/Antigravity: vive en un OS cuyo kernel es
 // el agente. Workspace real (api.os.files), tabs, syntax
 // highlighting, paleta de comandos, búsqueda y agente integrado.
@@ -22,6 +22,8 @@ export function createApp(api) {
     const [tabs, setTabs] = createSignal([]) // {path, name, lang, content, dirty, local}
     const [activeIdx, setActiveIdx] = createSignal(-1)
     const [palette, setPalette] = createSignal(false)
+    const [paletteMode, setPaletteMode] = createSignal('commands')
+    const [paletteFiles, setPaletteFiles] = createSignal([])
     const [searchOpen, setSearchOpen] = createSignal(false)
     const [searchQuery, setSearchQuery] = createSignal('')
     const [searchIdx, setSearchIdx] = createSignal(0)
@@ -37,6 +39,17 @@ export function createApp(api) {
     const [recent, setRecent] = createSignal([]) // [{path, name}] aperturas recientes
     let taRef = null
     let saveTimer = null
+    let rootRef = null
+
+    // El foco vive en el root (tabIndex=0): los atajos funcionan aunque el
+    // usuario haga clic en áreas vacías. Al interactuar con controles, el
+    // foco se queda en ellos; al hacer clic en el fondo, vuelve al root.
+    function onRootMouseDown(e) {
+      const tag = e.target?.tagName
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A') {
+        rootRef?.focus()
+      }
+    }
 
     const active = createMemo(() => tabs()[activeIdx()] || null)
 
@@ -61,6 +74,13 @@ export function createApp(api) {
     function flash(msg) {
       setStatus(msg)
       setTimeout(() => setStatus(''), 2500)
+    }
+
+    // Errores SIEMPRE visibles: flash en el header (funciona en el OS y
+    // en el .exe — donde api.os.notify es console.log, invisible)
+    function notifyError(msg) {
+      flash(`⛔ ${msg}`)
+      try { api.os.notify?.(msg, 'error', 3500) } catch { /* noop */ }
     }
 
     // ── Persistencia local (fallback sin daemon) ──
@@ -96,7 +116,7 @@ export function createApp(api) {
         setRecent(prev => [{ path, name: name || path.split('/').pop() || path }, ...prev.filter(r => r.path !== path)].slice(0, 8))
         if (line) setTimeout(() => focusLine(line), 50)
       } catch (e) {
-        api.os.notify?.(`No se pudo abrir: ${e.message}`, 'error', 3000)
+        api.os.notify?.(`No se pudo abrir: ${e.message}`)
       }
     }
 
@@ -124,6 +144,8 @@ export function createApp(api) {
     }
 
     function closeTab(i) {
+      const t = tabs()[i]
+      if (t?.dirty && !confirm(`«${t.name}» tiene cambios sin guardar. ¿Cerrar de todas formas?`)) return
       setTabs(prev => prev.filter((_, idx) => idx !== i))
       if (activeIdx() === i) {
         const next = tabs().length - 1
@@ -136,9 +158,14 @@ export function createApp(api) {
     function updateActive(content) {
       const i = activeIdx()
       if (i === -1) return
-      setTabs(prev => prev.map((t, idx) => idx === i ? { ...t, content, dirty: true } : t))
+      const t = tabs()[i]
+      setTabs(prev => prev.map((x, idx) => idx === i ? { ...x, content, dirty: true } : x))
       if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => { persistLocal(); flash('● Guardando…') }, 800)
+      // Guardado honesto: los tabs del workspace NO se autoguardan (Ctrl+S)
+      saveTimer = setTimeout(() => {
+        if (t.local) { persistLocal(); flash('● Guardando…') }
+        // workspace: el dot ● del tab ya avisa de cambios sin guardar
+      }, 800)
     }
 
     async function saveTab() {
@@ -155,7 +182,7 @@ export function createApp(api) {
         setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, dirty: false } : x))
         flash('✓ Guardado en disco')
       } catch (e) {
-        api.os.notify?.(`Error al guardar: ${e.message}`, 'error', 3000)
+        notifyError(`Error al guardar: ${e.message}`)
       }
     }
 
@@ -172,7 +199,7 @@ export function createApp(api) {
         await openFile(path, name)
         flash(`➕ ${name}`)
       } catch (e) {
-        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+        notifyError(`Error: ${e.message}`)
       }
     }
 
@@ -203,7 +230,7 @@ export function createApp(api) {
         await openFile(absPath(rel), name)
         flash(`➕ ${name}`)
       } catch (e) {
-        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+        notifyError(`Error: ${e.message}`)
       }
     }
 
@@ -218,7 +245,28 @@ export function createApp(api) {
         setRefresh(r => r + 1)
         flash(`📁 ${name}`)
       } catch (e) {
-        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+        notifyError(`Error: ${e.message}`)
+      }
+    }
+
+    // Mueve una carpeta de forma RECURSIVA (la API no tiene rename:
+    // read→create→write→remove por entrada, con subcarpetas completas)
+    async function moveDirRecursive(oldRel, newRel, oldAbs, newAbs) {
+      const entries = await filesApi.list(workspace(), oldRel)
+      for (const e of entries) {
+        const oRel = `${oldRel}/${e.name}`
+        const nRel = `${newRel}/${e.name}`
+        const oAbs = `${oldAbs}/${e.name}`
+        const nAbs = `${newAbs}/${e.name}`
+        if (e.type === 'dir') {
+          await filesApi.create(nAbs, 'dir')
+          await moveDirRecursive(oRel, nRel, oAbs, nAbs)
+          await filesApi.remove(oAbs)
+        } else {
+          await filesApi.create(nAbs, 'file')
+          await filesApi.write(nAbs, await filesApi.read(oAbs))
+          await filesApi.remove(oAbs)
+        }
       }
     }
 
@@ -240,35 +288,16 @@ export function createApp(api) {
           // actualizar tabs que referenciaban el path viejo
           setTabs(prev => prev.map(t => t.path === oldAbs ? { ...t, path: newAbs, name } : t))
         } else {
-          // carpeta: renombrar = mover contenido (read→create→remove) por entrada
-          const entries = await filesApi.list(workspace(), oldRel)
-          for (const e of entries) {
-            const o = `${oldAbs}/${e.name}`
-            const n = `${newAbs}/${e.name}`
-            if (e.type === 'dir') {
-              await filesApi.create(n, 'dir')
-              // renombrar recursivo (mover contenido interno)
-              const inner = await filesApi.list(workspace(), `${oldRel}/${e.name}`)
-              for (const i of inner) {
-                await filesApi.create(`${n}/${i.name}`, i.type)
-                if (i.type === 'file') {
-                  await filesApi.write(`${n}/${i.name}`, await filesApi.read(`${o}/${i.name}`))
-                  await filesApi.remove(`${o}/${i.name}`)
-                }
-              }
-              await filesApi.remove(o)
-            } else {
-              await filesApi.create(n, 'file')
-              await filesApi.write(n, await filesApi.read(o))
-              await filesApi.remove(o)
-            }
-          }
+          await filesApi.create(newAbs, 'dir')
+          await moveDirRecursive(oldRel, newRel, oldAbs, newAbs)
           await filesApi.remove(oldAbs)
+          // tabs abiertos dentro de la carpeta renombrada
+          setTabs(prev => prev.map(t => t.path.startsWith(oldAbs) ? { ...t, path: newAbs + t.path.slice(oldAbs.length) } : t))
         }
         setRefresh(r => r + 1)
-        flash(`✏️ ${oldName} → ${name}`)
+        flash(`✏ï¸ ${oldName} → ${name}`)
       } catch (e) {
-        api.os.notify?.(`Error al renombrar: ${e.message}`, 'error', 3000)
+        notifyError(`Error al renombrar: ${e.message}`)
       }
     }
 
@@ -281,9 +310,9 @@ export function createApp(api) {
         // cerrar tabs de ese archivo (o de archivos dentro de la carpeta)
         setTabs(prev => prev.filter(t => !t.path.startsWith(abs)))
         setRefresh(r => r + 1)
-        flash(`🗑️ ${item.name}`)
+        flash(`🗑ï¸ ${item.name}`)
       } catch (e) {
-        api.os.notify?.(`Error al eliminar: ${e.message}`, 'error', 3000)
+        notifyError(`Error al eliminar: ${e.message}`)
       }
     }
 
@@ -297,23 +326,30 @@ export function createApp(api) {
       }
     }
 
-    // Aplica el cambio propuesto por el agente (selección o archivo completo)
-    async function applyToActive(proposed) {
+    // Aplica el cambio propuesto por el agente. `capturedSel` es la
+    // selección capturada cuando el usuario pulsó "Aplicar" (el editor
+    // pudo cambiar desde entonces — aplicar SIEMPRE contra lo capturado).
+    // Sin selección → reemplazo TOTAL (el diálogo lo advierte explícito).
+    async function applyToActive(proposed, capturedSel) {
       const t = active()
       if (!t) return
-      const sel = taRef ? { s: taRef.selectionStart, e: taRef.selectionEnd } : null
+      const prevContent = t.content
+      const sel = capturedSel || (taRef ? { s: taRef.selectionStart, e: taRef.selectionEnd } : null)
       const nextContent = sel && sel.s !== sel.e
-        ? t.content.slice(0, sel.s) + proposed + t.content.slice(sel.e)
+        ? prevContent.slice(0, sel.s) + proposed + prevContent.slice(sel.e)
         : proposed
-      setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, content: nextContent, dirty: false } : x))
       if (!t.local) {
         try {
           await filesApi.write(t.path, nextContent)
+          setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, content: nextContent, dirty: false } : x))
           flash('✨ Cambio aplicado en disco')
         } catch (e) {
-          api.os.notify?.(`Error al guardar: ${e.message}`, 'error', 3000)
+          // rollback: si el write falla, el contenido del editor NO cambia
+          setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, content: prevContent, dirty: true } : x))
+          notifyError(`Error al guardar: ${e.message}`)
         }
       } else {
+        setTabs(prev => prev.map((x, i) => i === activeIdx() ? { ...x, content: nextContent, dirty: false } : x))
         flash('✨ Cambio aplicado')
       }
     }
@@ -326,7 +362,7 @@ export function createApp(api) {
         setManifestText(JSON.stringify(self?.manifest || { id: 'yola-code' }, null, 2))
         setManifestOpen(true)
       } catch (e) {
-        api.os.notify?.(`Error: ${e.message}`, 'error', 3000)
+        notifyError(`Error: ${e.message}`)
       }
     }
 
@@ -343,6 +379,29 @@ export function createApp(api) {
       }
     }
 
+    // ── Paleta: archivos (Ctrl+P) / comandos (Ctrl+Shift+P) ──
+    async function collectFiles() {
+      if (!hasFiles || !workspace()) { setPaletteFiles([]); return }
+      const out = []
+      const walk = async (dir, depth) => {
+        if (depth > 5) return
+        let entries
+        try { entries = await filesApi.list(workspace(), dir === '/' ? '' : dir) } catch { return }
+        for (const it of entries) {
+          if (it.type === 'dir') await walk(it.path, depth + 1)
+          else out.push({ path: it.absolute || it.path, name: it.name })
+        }
+      }
+      try { await walk('/', 0) } catch { /* workspace inaccesible */ }
+      setPaletteFiles(out.slice(0, 500))
+    }
+
+    function openPalette(mode) {
+      setPaletteMode(mode)
+      setPalette(true)
+      if (mode === 'files') collectFiles()
+    }
+
     // ── Comandos ──
     const commands = () => [
       { id: 'open-ws', label: 'Abrir workspace…', icon: '☰', run: openWorkspace },
@@ -350,8 +409,8 @@ export function createApp(api) {
       { id: 'save', label: 'Guardar (Ctrl+S)', icon: '💾', run: saveTab },
       { id: 'find', label: 'Buscar en archivo (Ctrl+F)', icon: '🔍', run: () => { setSearchOpen(true); setSearchQuery(''); setSearchIdx(0) } },
       { id: 'ws-find', label: 'Buscar en workspace (Ctrl+Shift+F)', icon: '🔎', run: () => { setWsSearch(true); setWsQuery('') } },
-      { id: 'rename-active', label: 'Renombrar archivo activo…', icon: '✏️', run: () => { const t = active(); if (t && !t.local) renameItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
-      { id: 'delete-active', label: 'Eliminar archivo activo…', icon: '🗑️', run: () => { const t = active(); if (t && !t.local) deleteItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
+      { id: 'rename-active', label: 'Renombrar archivo activo…', icon: '✏ï¸', run: () => { const t = active(); if (t && !t.local) renameItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
+      { id: 'delete-active', label: 'Eliminar archivo activo…', icon: '🗑ï¸', run: () => { const t = active(); if (t && !t.local) deleteItem({ path: t.path.replace(workspace() + '/', ''), name: t.name, type: 'file', absolute: t.path }) } },
       { id: 'ask', label: 'Preguntar a YOLA', icon: '💬', run: () => askYola(false) },
       { id: 'improve', label: 'Mejorar selección con YOLA', icon: '✨', run: () => askYola(true) },
       { id: 'help', label: 'Atajos de teclado (F1)', icon: '❓', run: () => setHelpOpen(true) },
@@ -362,7 +421,8 @@ export function createApp(api) {
 
     function onKeyDown(e) {
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key === 'p') { e.preventDefault(); setPalette(v => !v); return }
+      if (mod && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); openPalette('commands'); return }
+      if (mod && !e.shiftKey && e.key === 'p') { e.preventDefault(); openPalette('files'); return }
       if (mod && e.key === 'f') { e.preventDefault(); setSearchOpen(v => !v); setSearchIdx(0); return }
       if (mod && e.key === 'j') { e.preventDefault(); setAgentOpen(v => !v); return }
       if (mod && e.key === 'w') { e.preventDefault(); if (activeIdx() !== -1) closeTab(activeIdx()); return }
@@ -393,13 +453,22 @@ export function createApp(api) {
 
     return (
       <div
+        ref={rootRef}
+        tabIndex={0}
+        onMouseDown={onRootMouseDown}
         style={{
           display: 'flex', 'flex-direction': 'column', height: '100%',
           background: 'var(--bg-window)', color: 'var(--text-primary)',
           'font-family': 'var(--font)', 'font-size': '13px', position: 'relative',
+          outline: 'none',
         }}
         onKeyDown={onKeyDown}
       >
+        <style>{`
+          .yola-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent) !important; outline-offset: -1px; }
+          .yola-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+          .yola-btn:active { transform: translateY(1px); }
+        `}</style>
         {/* ── Header ── */}
         <div style={{
           display: 'flex', 'align-items': 'center', gap: '8px', padding: '5px 10px',
@@ -419,10 +488,10 @@ export function createApp(api) {
           <Show when={status()}>
             <span style={{ 'font-size': '10.5px', color: 'var(--text-secondary)' }}>{status()}</span>
           </Show>
-          <button onClick={() => setPalette(true)} style={btnAccent} title="Paleta de comandos (Ctrl+P)" aria-label="Paleta de comandos">☰</button>
-          <button onClick={() => askYola(false)} style={btnStyle} title="Abrir el agente (Ctrl+J)" aria-label="Abrir el agente">💬</button>
-          <button onClick={() => askYola(true)} style={btnAccent} title="Mejorar selección con YOLA" aria-label="Mejorar selección con YOLA">✨</button>
-          <button onClick={openManifest} style={btnStyle} title="Ver manifest" aria-label="Ver manifest">📜</button>
+          <button onClick={() => openPalette('commands')} style={btnAccent} className="yola-btn" title="Paleta de comandos (Ctrl+Shift+P)" aria-label="Paleta de comandos">☰</button>
+          <button onClick={() => askYola(false)} style={btnStyle} className="yola-btn" title="Abrir el agente (Ctrl+J)" aria-label="Abrir el agente">💬</button>
+          <button onClick={() => askYola(true)} style={btnAccent} className="yola-btn" title="Mejorar selección con YOLA" aria-label="Mejorar selección con YOLA">✨</button>
+          <button onClick={openManifest} style={btnStyle} className="yola-btn" title="Ver manifest" aria-label="Ver manifest">📜</button>
         </div>
 
         {/* ── Cuerpo ── */}
@@ -527,6 +596,7 @@ export function createApp(api) {
                     if (e.key === 'Enter') nextMatch(e.shiftKey ? -1 : 1)
                     if (e.key === 'Escape') setSearchOpen(false)
                   }}
+                  className="yola-input"
                   placeholder="Buscar en el archivo…"
                   style={{
                     flex: 1, padding: '4px 8px', border: '1px solid var(--border-window)', 'border-radius': '4px',
@@ -557,7 +627,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.5.1</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.0</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
@@ -576,7 +646,15 @@ export function createApp(api) {
         </div>
 
         {/* ── Paleta ── */}
-        <Palette open={palette()} commands={commands()} onClose={() => setPalette(false)} />
+        <Palette
+          open={palette()}
+          mode={paletteMode()}
+          commands={commands()}
+          files={paletteFiles()}
+          recent={recent()}
+          onClose={() => setPalette(false)}
+          onOpenFile={(f) => { openFile(f.path, f.name) }}
+        />
 
         {/* ── Búsqueda en workspace ── */}
         <Show when={hasFiles}>
@@ -607,10 +685,12 @@ export function createApp(api) {
               }}
             >
               <div style={{ 'font-weight': 600, 'margin-bottom': '4px' }}>Atajos de teclado</div>
-              <Shortcut keys="Ctrl+P" label="Paleta de comandos" />
+              <Shortcut keys="Ctrl+P" label="Abrir archivo (fuzzy)" />
+              <Shortcut keys="Ctrl+Shift+P" label="Paleta de comandos" />
               <Shortcut keys="Ctrl+F" label="Buscar en archivo" />
               <Shortcut keys="Ctrl+Shift+F" label="Buscar en el workspace" />
               <Shortcut keys="Ctrl+S" label="Guardar archivo" />
+              <Shortcut keys="Ctrl+Z / Ctrl+Shift+Z" label="Deshacer / Rehacer" />
               <Shortcut keys="Ctrl+D" label="Duplicar línea o selección" />
               <Shortcut keys="Ctrl+/" label="Comentar / descomentar" />
               <Shortcut keys="Alt+↑ ↓" label="Mover línea" />
@@ -666,3 +746,4 @@ function Shortcut(props) {
     </div>
   )
 }
+

@@ -1,11 +1,14 @@
 // ── YOLA Code — Editor con syntax highlighting (overlay) ─────
 // Técnica estándar de editores ligeros: textarea transparente
 // (caret visible) sobre un <pre> coloreado. Scroll sincronizado.
-// v0.4.1: gutter con números de línea, línea activa resaltada,
-// atajos de edición (Ctrl+D duplicar, Ctrl+/ comentar, Alt+↑↓
-// mover línea) y autocompletado ligero (keywords + documento).
+//
+// v0.6: UNDO/REDO REAL — textarea NO controlado (el binding reactivo
+// re-asignaba .value en cada tecla y destruía la pila del browser) +
+// pila propia de snapshots (beforeinput + commits programáticos).
+// v0.4.1: gutter con números de línea, línea activa, atajos de
+// edición y autocompletado ligero.
 // ──────────────────────────────────────────────────────────────
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, createSignal, For, Show, onMount } from 'solid-js'
 import { highlight } from './highlight'
 import { isWordChar, suggest, buildWordMap, commentMarker, toggleCommentText } from './suggest'
 
@@ -20,21 +23,70 @@ const LINE_H = 20 // 12.5px * 1.6
 const PAD_T = 10
 const PAD_L = 12
 const GUTTER_W = 44
+const UNDO_LIMIT = 200
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 export function Editor(props) {
   // props: { content, lang, onChange, onSave, dirty, onCursor, onTa }
-  const html = createMemo(() => highlight(props.content, props.lang))
-  const lines = createMemo(() => {
-    const n = props.content.split('\n').length
-    return Array.from({ length: n }, (_, i) => i + 1)
+  // Archivos > ~100 KB: highlight desactivado (el innerHTML completo por
+  // tecla bloquea el hilo). Texto plano con escape, números de línea vivos.
+  const LARGE = props.content.length > 100_000
+  const html = createMemo(() => {
+    if (LARGE) return escapeHtml(props.content)
+    return highlight(props.content, props.lang)
   })
-  const wordMap = createMemo(() => buildWordMap(props.content))
+  const lineCount = createMemo(() => props.content.split('\n').length)
+  const wordMap = createMemo(() => {
+    // cap de tamaño: no indexar documentos gigantes en cada tecla
+    return buildWordMap(props.content.length > 120_000 ? props.content.slice(0, 120_000) : props.content)
+  })
 
   let preRef
   let taRef
   const [scrollY, setScrollY] = createSignal(0)
   const [cursor, setCursor] = createSignal({ line: 1, col: 1 })
   const [sugg, setSugg] = createSignal(null) // {start, items, idx}
+
+  // ── Undo/redo: pila propia (el textarea es NO controlado) ──
+  let undoStack = []
+  let redoStack = []
+
+  function pushUndo() {
+    const t = taRef
+    if (!t) return
+    undoStack.push({ v: t.value, s: t.selectionStart, e: t.selectionEnd })
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+    redoStack = []
+  }
+
+  function restoreEntry(entry) {
+    const t = taRef
+    if (!t) return
+    t.value = entry.v
+    t.setSelectionRange(entry.s, entry.e)
+    props.onChange(entry.v)
+    reportCursor(t)
+    setSugg(null)
+  }
+
+  function undo() {
+    const t = taRef
+    if (!t) return
+    if (!undoStack.length) return
+    redoStack.push({ v: t.value, s: t.selectionStart, e: t.selectionEnd })
+    restoreEntry(undoStack.pop())
+  }
+
+  function redo() {
+    const t = taRef
+    if (!t) return
+    if (!redoStack.length) return
+    undoStack.push({ v: t.value, s: t.selectionStart, e: t.selectionEnd })
+    restoreEntry(redoStack.pop())
+  }
 
   function reportCursor(el) {
     const pos = el.selectionStart
@@ -53,8 +105,9 @@ export function Editor(props) {
     setScrollY(e.target.scrollTop)
   }
 
-  // ── Edición programática (cambiar valor + caret + onChange) ──
+  // ── Edición programática (snapshot + mutar + caret + onChange) ──
   function commit(el, value, selStart, selEnd) {
+    pushUndo() // snapshot ANTES de mutar (la pila del browser no existe aquí)
     el.value = value
     el.setSelectionRange(selStart, selEnd)
     props.onChange(value)
@@ -148,11 +201,16 @@ export function Editor(props) {
   }
 
   function onKeyDown(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && e.key === 's') {
       e.preventDefault()
       props.onSave?.()
       return
     }
+    // Undo/redo propios (el textarea no controlado NO tiene pila del browser)
+    if (mod && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); return }
+    if (mod && e.shiftKey && e.key === 'Z') { e.preventDefault(); redo(); return }
+    if (mod && !e.shiftKey && e.key === 'y') { e.preventDefault(); redo(); return }
     // Autocompletado abierto: Enter/Tab aceptan, flechas navegan, Esc cierra
     if (sugg()) {
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptSuggestion(); return }
@@ -160,11 +218,12 @@ export function Editor(props) {
       if (e.key === 'ArrowUp') { e.preventDefault(); setSugg(g => g ? { ...g, idx: (g.idx - 1 + g.items.length) % g.items.length } : g); return }
       if (e.key === 'Escape') { e.preventDefault(); setSugg(null); return }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateLine(e); return }
-    if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); toggleComment(e); return }
+    if (mod && e.key === 'd') { e.preventDefault(); duplicateLine(e); return }
+    if (mod && e.key === '/') { e.preventDefault(); toggleComment(e); return }
     if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); moveLine(e, -1); return }
     if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); moveLine(e, 1); return }
-    if (e.key === 'Tab') {
+    if (e.key === 'Tab' && !mod) {
+      // Tab con ctrl/meta NO indentar (Ctrl+Tab cicla pestañas en el root)
       e.preventDefault()
       const t = e.target
       const s = t.selectionStart
@@ -173,44 +232,72 @@ export function Editor(props) {
     }
   }
 
+  // Sincronización del textarea NO controlado: solo cuando el contenido
+  // externo difiere (cambio de tab/archivo). Nunca durante la escritura.
+  onMount(() => {
+    if (taRef && taRef.value !== props.content) {
+      taRef.value = props.content
+      props.onTa?.(taRef)
+      reportCursor(taRef)
+    }
+  })
+
+  // visible lines (gutter virtualizado — ventana ~40 líneas)
+  const viewStart = () => Math.max(0, Math.floor(scrollY() / LINE_H) - 8)
+  const viewCount = () => 48
+  const visibleLines = createMemo(() => {
+    const n = lineCount()
+    const start = Math.min(viewStart(), n)
+    const end = Math.min(start + viewCount(), n)
+    return { start, end, n }
+  })
+
   return (
     <div style={{ position: 'relative', flex: 1, overflow: 'hidden', background: 'var(--bg-desktop)', display: 'flex' }}>
       <style>{`
-        .yk-k { color: #c678dd; } .yk-s { color: #98c379; }
-        .yk-c { color: #5c6370; font-style: italic; }
-        .yk-n { color: #d19a66; } .yk-f { color: #61afef; }
-        .yk-p { color: #e06c75; }
+        .yk-k { color: var(--syntax-keyword); } .yk-s { color: var(--syntax-string); }
+        .yk-c { color: var(--syntax-comment); font-style: italic; }
+        .yk-n { color: var(--syntax-number); } .yk-f { color: var(--syntax-function); }
+        .yk-p { color: var(--syntax-punct); }
       `}</style>
 
-      {/* Gutter con números de línea */}
+      {/* Gutter con números de línea (virtualizado) */}
       <div style={{
         width: `${GUTTER_W}px`, 'flex-shrink': 0, overflow: 'hidden', position: 'relative',
         background: 'var(--bg-window-header)', 'border-right': '1px solid var(--border-window)',
         'user-select': 'none',
       }}>
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0,
-          transform: `translateY(${PAD_T - scrollY()}px)`,
-        }}>
-          <For each={lines()}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
+          {/* spacer superior (líneas antes de la ventana) */}
+          <div style={{ height: `${visibleLines().start * LINE_H}px` }} />
+          <For each={Array.from({ length: visibleLines().end - visibleLines().start }, (_, i) => visibleLines().start + i + 1)}>
             {(n) => (
               <div style={{
                 height: `${LINE_H}px`, 'line-height': `${LINE_H}px`, 'font-size': '11px',
                 paddingRight: '7px', 'text-align': 'right', 'font-family': 'ui-monospace, Consolas, monospace',
-                color: n === cursor().line ? 'var(--accent)' : 'var(--text-muted)',
+                color: n === cursor().line ? 'var(--accent)' : 'var(--text-secondary)',
                 'font-weight': n === cursor().line ? 700 : 400,
                 background: n === cursor().line ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
               }}>{n}</div>
             )}
           </For>
+          <div style={{ height: `${(visibleLines().n - visibleLines().end) * LINE_H}px` }} />
         </div>
       </div>
 
       {/* Área de edición */}
       <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-        {/* Línea activa */}
+      {/* Línea activa */}
+      <Show when={LARGE}>
         <div style={{
-          position: 'absolute', left: 0, right: 0, height: `${LINE_H}px`, 'pointer-events': 'none',
+          position: 'absolute', top: '4px', right: '8px', zIndex: '5', 'pointer-events': 'none',
+          'font-size': '9.5px', color: 'var(--warning)',
+          background: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+          padding: '1px 7px', 'border-radius': '8px', 'font-family': 'var(--font)',
+        }}>archivo grande — resaltado desactivado</div>
+      </Show>
+      <div style={{
+        position: 'absolute', left: 0, right: 0, height: `${LINE_H}px`, 'pointer-events': 'none',
           top: `${(cursor().line - 1) * LINE_H + PAD_T - scrollY()}px`,
           background: 'color-mix(in srgb, var(--accent) 7%, transparent)',
           zIndex: '0',
@@ -227,9 +314,21 @@ export function Editor(props) {
           innerHTML={html()}
         />
         <textarea
-          ref={(el) => { taRef = el; props.onTa?.(el) }}
-          value={props.content}
-          onInput={(e) => { props.onChange(e.target.value); reportCursor(e.target); maybeSuggest(e.target) }}
+          ref={(el) => {
+            taRef = el
+            if (el && !el.dataset.initialized) {
+              el.value = props.content
+              el.dataset.initialized = '1'
+              props.onTa?.(el)
+            }
+          }}
+          onInput={(e) => {
+            // el browser YA mutó el value — solo notificar (sin re-asignar)
+            props.onChange(e.target.value)
+            reportCursor(e.target)
+            maybeSuggest(e.target)
+          }}
+          onBeforeInput={() => pushUndo()}
           onScroll={syncScroll}
           onKeyDown={onKeyDown}
           onKeyUp={(e) => reportCursor(e.target)}

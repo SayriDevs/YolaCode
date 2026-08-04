@@ -127,7 +127,7 @@ export function Explorer(props) {
   return (
     <div style={{ display: 'flex', 'flex-direction': 'column', height: '100%' }}>
       <div style={{
-        padding: '5px 8px', 'font-size': '10.5px', color: 'var(--text-muted)',
+        padding: '5px 8px', 'font-size': '10.5px', color: 'var(--text-secondary)',
         'border-bottom': '1px solid var(--border-window)', overflow: 'hidden',
         'text-overflow': 'ellipsis', 'white-space': 'nowrap', 'font-family': 'monospace',
       }} title={props.workspace}>{props.workspace || 'sin workspace'}</div>
@@ -140,6 +140,7 @@ export function Explorer(props) {
               clearTimeout(debounceRef)
               debounceRef = setTimeout(() => searchFiles(e.target.value.trim()), 280)
             }}
+            className="yola-input"
             placeholder="Buscar archivo por nombre…"
             style={{
               width: '100%', padding: '4px 7px', border: '1px solid var(--border-window)',
@@ -223,7 +224,7 @@ function MenuItem(props) {
       onClick={props.onClick}
       style={{
         padding: '5px 10px', 'border-radius': '5px', cursor: 'pointer',
-        color: props.danger ? '#e06c75' : 'var(--text-primary)',
+        color: props.danger ? 'var(--danger)' : 'var(--text-primary)',
         'white-space': 'nowrap',
       }}
       onMouseOver={(e) => { e.currentTarget.style.background = 'var(--bg-window-header)' }}

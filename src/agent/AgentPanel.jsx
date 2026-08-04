@@ -110,7 +110,16 @@ export function AgentPanel(props) {
             return prev.map((m, idx) => idx === i ? { ...m, text: m.text + t } : m)
           })
         },
-        onError: (e) => setError(e.message),
+        onError: (e) => {
+          // el error DEBE finalizar el stream: la UI no puede quedar
+          // pegada en "Pensando…" con el botón bloqueado
+          setError(e.message)
+          setMessages(prev => prev.map((m, idx) => idx === prev.length - 1
+            ? { ...m, pending: false, text: m.text ? `${m.text}\n\n⛔ ${e.message}` : `⛔ ${e.message}` }
+            : m))
+          setStreaming(false)
+          setSending(false)
+        },
         onDone: () => {
           setMessages(prev => prev.map((m, idx) => idx === prev.length - 1 ? { ...m, pending: false } : m))
           setStreaming(false)
@@ -137,8 +146,17 @@ export function AgentPanel(props) {
     const hasSel = sel && sel.s !== sel.e
     const block = extractCodeBlock(msg.text)
     if (!block) return
+    // CAPTURAR el estado al momento del clic (el editor pudo cambiar luego)
     const original = hasSel ? f.content.slice(sel.s, sel.e) : f.content
-    setApplyTarget({ original, proposed: block.code, lang: block.lang, hasSelection: hasSel, file: f.name })
+    setApplyTarget({
+      original,
+      proposed: block.code,
+      lang: block.lang,
+      hasSelection: hasSel,
+      file: f.name,
+      sel: hasSel ? { s: sel.s, e: sel.e } : null,
+      path: f.path,
+    })
   }
 
   function cancelApply() {
@@ -154,7 +172,8 @@ export function AgentPanel(props) {
   function confirmApply() {
     const t = applyTarget()
     if (!t) return
-    props.onApplyToActive?.(t.proposed)
+    // aplicar contra lo CAPTURADO (selección original), nunca la actual
+    props.onApplyToActive?.(t.proposed, t.sel)
     setApplyTarget(null)
     flash('✨ Cambio aplicado al archivo')
   }
@@ -177,8 +196,8 @@ export function AgentPanel(props) {
             <span style={{ 'font-size': '9.5px', color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '1px 6px', 'border-radius': '8px' }}>#{TAG}</span>
           </Show>
           <div style={{ flex: 1 }} />
-          <button onClick={() => { pickSession(''); setMessages([]) }} style={miniBtn} title="Nueva sesión">➕</button>
-          <button onClick={props.onClose} style={miniBtn} title="Cerrar panel (Ctrl+J)">✕</button>
+          <button onClick={() => { pickSession(''); setMessages([]) }} style={miniBtn} className="yola-btn" title="Nueva sesión">➕</button>
+          <button onClick={props.onClose} style={miniBtn} className="yola-btn" title="Cerrar panel (Ctrl+J)">✕</button>
         </div>
 
         {/* Sesiones (compartidas, con tag) */}
@@ -236,13 +255,13 @@ export function AgentPanel(props) {
                   <button onClick={() => requestApply(m)} style={{
                     ...miniBtn, 'margin-top': '4px', color: 'var(--success)',
                     border: '1px solid color-mix(in srgb, var(--success) 40%, transparent)',
-                  }}>💾 Aplicar al archivo…</button>
+                  }} className="yola-btn">💾 Aplicar al archivo…</button>
                 </Show>
               </div>
             )}
           </For>
           <Show when={error()}>
-            <div style={{ 'font-size': '10.5px', color: '#e06c75', padding: '4px' }}>{error()}</div>
+            <div style={{ 'font-size': '10.5px', color: 'var(--danger)', padding: '4px' }}>{error()}</div>
           </Show>
         </div>
 
@@ -254,6 +273,7 @@ export function AgentPanel(props) {
           <textarea
             ref={inputRef}
             value={input()}
+            className="yola-input"
             onInput={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
@@ -280,9 +300,9 @@ export function AgentPanel(props) {
             </label>
             <div style={{ flex: 1 }} />
             <Show when={streaming()}>
-              <button onClick={stop} style={miniBtn} title="Detener">⏹ Detener</button>
+              <button onClick={stop} style={miniBtn} className="yola-btn" title="Detener">⏹ Detener</button>
             </Show>
-            <button onClick={send} disabled={sending() || !input().trim()} style={{
+            <button onClick={send} disabled={sending() || !input().trim()} className="yola-btn" style={{
               ...miniBtn, color: 'var(--text-primary)', background: 'color-mix(in srgb, var(--accent) 20%, transparent)',
               border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)', opacity: sending() || !input().trim() ? 0.5 : 1,
             }}>Enviar</button>
@@ -309,6 +329,9 @@ export function AgentPanel(props) {
               <Show when={applyTarget().hasSelection}>
                 <span style={{ 'font-size': '10px', color: 'var(--accent)', 'margin-left': '6px' }}>(reemplaza la selección)</span>
               </Show>
+              <Show when={!applyTarget().hasSelection}>
+                <span style={{ 'font-size': '10px', color: 'var(--warning)', 'margin-left': '6px' }}>(reemplaza TODO el archivo)</span>
+              </Show>
             </div>
             <div style={{ display: 'flex', gap: '8px', 'min-height': '180px', 'max-height': '300px' }}>
               <div style={{ flex: 1, 'min-width': 0 }}>
@@ -333,11 +356,12 @@ export function AgentPanel(props) {
               <button
                 onClick={confirmApply}
                 style={{
-                  ...miniBtn, color: 'var(--success)',
-                  border: '1px solid color-mix(in srgb, var(--success) 45%, transparent)',
-                  background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                  ...miniBtn,
+                  color: applyTarget().hasSelection ? 'var(--success)' : 'var(--warning)',
+                  border: `1px solid color-mix(in srgb, ${applyTarget().hasSelection ? 'var(--success)' : 'var(--warning)'} 45%, transparent)`,
+                  background: `color-mix(in srgb, ${applyTarget().hasSelection ? 'var(--success)' : 'var(--warning)'} 12%, transparent)`,
                 }}
-              >💾 Escribir en disco</button>
+              >💾 {applyTarget().hasSelection ? 'Escribir en disco' : 'Sobrescribir TODO el archivo'}</button>
             </div>
           </div>
         </div>
