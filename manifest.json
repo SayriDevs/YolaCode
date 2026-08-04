@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.1: botones del agente diferenciados — 💬 conversar, ✨ mejorar selección (deshabilitado sin selección) con chip de selección adjunta visible.",
-  "version": "0.6.1",
+  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.2: workspaces del si-yola detectados automáticamente (vía daemon) y persistidos — el .exe standalone conserva los workspaces del OS; selector de workspace en el header.",
+  "version": "0.6.2",
   "entry": "dist/app.js",
-  "checksum": "9cd9817c4fa5353fd5cebb050805d555a265954386d80094915b6e6cd975a3d1",
+  "checksum": "3199d468e350647c5a11b3ec4c3437f1cf8c8903fa3584ee4d70cbf67554b4e4",
   "singleton": true,
   "permissions": [
     "notify",

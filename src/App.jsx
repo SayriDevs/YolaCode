@@ -1,10 +1,10 @@
-﻿// ── YOLA Code — App (el editor nativo de YOLA) ───────────────
+// ── YOLA Code — App (el editor nativo de YOLA) ───────────────
 // Mejor que Cursor/Codex/Antigravity: vive en un OS cuyo kernel es
 // el agente. Workspace real (api.os.files), tabs, syntax
 // highlighting, paleta de comandos, búsqueda y agente integrado.
 // Compilada con Vite → dist/app.js (bundle autocontenido).
 // ──────────────────────────────────────────────────────────────
-import { createSignal, createMemo, For, Show, onCleanup } from 'solid-js'
+import { createSignal, createMemo, For, Show, onCleanup, onMount } from 'solid-js'
 import { hasFilesApi, loadLocalFiles, saveLocalFiles, loadWorkspacePath, saveWorkspacePath } from './api'
 import { detectLanguage } from './editor/highlight'
 import { Editor } from './editor/Editor'
@@ -12,6 +12,7 @@ import { Explorer } from './editor/Explorer'
 import { Palette } from './editor/Palette'
 import { WorkspaceSearch } from './editor/WorkspaceSearch'
 import { AgentPanel } from './agent/AgentPanel'
+import { loadLocalWorkspaces, saveLocalWorkspaces, fetchOsWorkspaces, mergeWorkspaces, workspaceLabel } from './workspaces'
 
 export function createApp(api) {
   return function YolaCodeWindow() {
@@ -38,6 +39,8 @@ export function createApp(api) {
     const [agentOpen, setAgentOpen] = createSignal(false)
     const [agentPrefill, setAgentPrefill] = createSignal('')
     const [recent, setRecent] = createSignal([]) // [{path, name}] aperturas recientes
+    const [knownWs, setKnownWs] = createSignal([]) // workspaces (OS + locales, persistidos)
+    const [wsMenu, setWsMenu] = createSignal(false)
     let taRef = null
     let saveTimer = null
     let rootRef = null
@@ -67,6 +70,10 @@ export function createApp(api) {
       return out
     })
 
+    onMount(() => {
+      syncWorkspaces()
+    })
+
     onCleanup(() => {
       if (saveTimer) clearTimeout(saveTimer)
       persistLocal()
@@ -92,6 +99,29 @@ export function createApp(api) {
         for (const t of local) map[t.path] = t.content
         saveLocalFiles(map)
       }
+    }
+
+    // ── Workspaces: los del OS se detectan solos y se persisten (para el .exe) ──
+    async function syncWorkspaces() {
+      const locals = loadLocalWorkspaces()
+      let merged = locals
+      if (hasFiles && api?.os?.daemonUrl) {
+        try {
+          const osWs = await fetchOsWorkspaces(api.os.daemonUrl)
+          const res = mergeWorkspaces(osWs, locals)
+          merged = res.merged
+          if (res.added) flash(`📂 ${res.added} workspace${res.added > 1 ? 's' : ''} del OS detectado${res.added > 1 ? 's' : ''}`)
+        } catch { /* sin daemon: solo locales */ }
+      }
+      setKnownWs(merged)
+      saveLocalWorkspaces(merged)
+    }
+
+    function pickWorkspace(root) {
+      setWorkspace(root)
+      saveWorkspacePath(root)
+      setWsMenu(false)
+      flash('☰ Workspace: ' + root)
     }
 
     // ── Workspace ──
@@ -486,6 +516,56 @@ export function createApp(api) {
           <span style={{ 'font-size': '10.5px', color: 'var(--text-muted)', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap', 'max-width': '260px' }} title={workspace()}>
             {workspace() || 'sin workspace'}
           </span>
+          <Show when={knownWs().length}>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setWsMenu(v => !v)}
+                className="yola-btn"
+                style={btnStyle}
+                title="Cambiar de workspace (detectados del OS + locales)"
+                aria-label="Cambiar de workspace"
+              >📂 {knownWs().length}</button>
+              <Show when={wsMenu()}>
+                <div style={{ position: 'fixed', inset: '0', zIndex: '45' }} onClick={() => setWsMenu(false)} />
+                <div style={{
+                  position: 'absolute', top: '100%', right: '0', zIndex: '46', 'margin-top': '4px',
+                  background: 'var(--bg-window)', border: '1px solid var(--border-window)',
+                  'border-radius': '8px', 'box-shadow': 'var(--shadow)', padding: '4px',
+                  'min-width': '240px', 'max-width': '320px', 'max-height': '280px', overflow: 'auto',
+                  'font-size': '11px', 'font-family': 'var(--font)',
+                }}>
+                  <div style={{ padding: '4px 8px', 'font-size': '9.5px', color: 'var(--text-muted)', 'text-transform': 'uppercase', 'letter-spacing': '0.4px' }}>
+                    Workspaces ({knownWs().length})
+                  </div>
+                  <For each={knownWs()}>
+                    {(w) => (
+                      <div
+                        onClick={() => pickWorkspace(w.root)}
+                        style={{
+                          padding: '6px 8px', 'border-radius': '5px', cursor: 'pointer',
+                          display: 'flex', gap: '7px', 'align-items': 'center',
+                          color: workspace() === w.root ? 'var(--accent)' : 'var(--text-primary)',
+                          background: workspace() === w.root ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                        }}
+                      >
+                        <span>📁</span>
+                        <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{workspaceLabel(w)}</span>
+                        <span style={{ 'margin-left': 'auto', 'font-size': '9px', color: 'var(--text-muted)', 'flex-shrink': 0 }}>
+                          {w.source === 'os' ? 'OS' : 'local'}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                  <div style={{ padding: '3px', 'border-top': '1px solid var(--border-window)', 'margin-top': '4px' }}>
+                    <div
+                      onClick={() => { setWsMenu(false); openWorkspace() }}
+                      style={{ padding: '6px 8px', 'border-radius': '5px', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                    >☰ Abrir otra ruta…</div>
+                  </div>
+                </div>
+              </Show>
+            </div>
+          </Show>
           <div style={{ flex: 1 }} />
           <Show when={status()}>
             <span style={{ 'font-size': '10.5px', color: 'var(--text-secondary)' }}>{status()}</span>
@@ -640,7 +720,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.0</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.2</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
