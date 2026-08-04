@@ -88,7 +88,12 @@ export function buildYolaFilesApi(daemonUrl) {
     list: async (directory = '', path = '') => {
       const res = await fetch(`${base}/files${q({ directory, path })}`)
       if (!res.ok) throw new Error(`files HTTP ${res.status}`)
-      return res.json()
+      const data = await res.json()
+      // el bridge devuelve { entries: [...] } — NUNCA asumir un formato sin
+      // verificar (esto enmascaró el bug como "Vacío" silencioso)
+      if (Array.isArray(data)) return data
+      if (Array.isArray(data?.entries)) return data.entries
+      throw new Error('files: formato de respuesta inesperado')
     },
     read: async (path) => {
       const res = await fetch(`${base}/files/content${q({ path })}`)

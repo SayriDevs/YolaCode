@@ -5,10 +5,10 @@
   "repo": "github.com/SayriDevs/YolaCode",
   "icon": "🧑‍💻",
   "category": "Dev",
-  "description": "El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.3: filesApi propio con el contrato real del bridge (el del OS usaba /files/list, ruta inexistente → 404 sin ACAO → \"CORS blocked\" engañoso). El explorador ya lista los workspaces del OS.",
-  "version": "0.6.3",
+  "description": "El editor nativo de YOLA. v0.6.4: parseo del formato real del bridge ({entries}) en files.list — el bug que ocultaba la lista como «Vacío»; errores SIEMPRE visibles en explorador y búsquedas (nunca silenciosos).",
+  "version": "0.6.4",
   "entry": "dist/app.js",
-  "checksum": "7676f8537d98a63f75e3158a789c0f170c8847a84917bb08afbcc034c9422ce4",
+  "checksum": "11ee40b768dca87bb75c1a66e00cbcd45181c64bcf667037c26d84cc69fbd892",
   "singleton": true,
   "permissions": [
     "notify",

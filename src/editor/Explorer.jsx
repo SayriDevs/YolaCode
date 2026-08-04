@@ -9,6 +9,7 @@ export function Explorer(props) {
   const [filter, setFilter] = createSignal('') // búsqueda de archivos por nombre
   const [hits, setHits] = createSignal(null) // null = sin buscar | [] = sin matches | [{path, absolute, name}]
   const [hitLoading, setHitLoading] = createSignal(false)
+  const [filterErr, setFilterErr] = createSignal('')
   let debounceRef = null
   let walkAbort = null
 
@@ -18,20 +19,22 @@ export function Explorer(props) {
       const entries = await props.filesApi.list(props.workspace, path === '/' ? '' : path)
       const items = Array.isArray(entries) ? entries : []
       setDirs(prev => ({ ...prev, [path]: { loaded: true, entries: items } }))
-    } catch {
-      setDirs(prev => ({ ...prev, [path]: { loaded: true, entries: [] } }))
+    } catch (e) {
+      // ERROR VISIBLE — nunca "Vacío" silencioso (enmascara la causa real)
+      setDirs(prev => ({ ...prev, [path]: { loaded: true, entries: [], error: e.message } }))
     }
   }
 
   // Búsqueda por nombre: recorre el árbol completo (límite prof. 6)
   async function searchFiles(q) {
-    if (!q) { setHits(null); setHitLoading(false); return }
+    if (!q) { setHits(null); setHitLoading(false); setFilterErr(''); return }
     setHitLoading(true)
     if (walkAbort) walkAbort.abort()
     const ac = new AbortController()
     walkAbort = ac
     const found = []
     const ql = q.toLowerCase()
+    let walkErr = ''
 
     async function walk(dir, depth) {
       if (ac.signal.aborted) return
@@ -39,7 +42,7 @@ export function Explorer(props) {
       let entries
       try {
         entries = await props.filesApi.list(props.workspace, dir === '/' ? '' : dir)
-      } catch { return }
+      } catch (e) { walkErr = e.message; return }
       for (const item of entries) {
         if (ac.signal.aborted) return
         if (item.type === 'dir') await walk(item.path, depth + 1)
@@ -51,7 +54,7 @@ export function Explorer(props) {
     }
 
     await walk('/', 0)
-    if (!ac.signal.aborted) { setHits(found); setHitLoading(false) }
+    if (!ac.signal.aborted) { setHits(found); setHitLoading(false); setFilterErr(walkErr) }
   }
 
   const [lastRefresh, setLastRefresh] = createSignal(0)
@@ -89,6 +92,9 @@ export function Explorer(props) {
     const state = dirs()[path]
     if (state === null) {
       return <div style={{ padding: `${4 + depth * 14}px 8px`, 'font-size': '11px', color: 'var(--text-muted)' }}>Cargando…</div>
+    }
+    if (state?.error) {
+      return <div style={{ padding: `${4 + depth * 14}px 8px`, 'font-size': '10.5px', color: 'var(--danger)' }} title={state.error}>⛔ {state.error}</div>
     }
     if (!state?.entries?.length) {
       return <div style={{ padding: `${4 + depth * 14}px 8px`, 'font-size': '11px', color: 'var(--text-muted)', opacity: 0.7 }}>Vacío</div>
@@ -152,6 +158,9 @@ export function Explorer(props) {
       </Show>
       <div style={{ flex: 1, 'overflow-y': 'auto', padding: '4px 0 8px' }}>
         <Show when={filter() && hits() !== null}>
+          <Show when={filterErr()}>
+            <div style={{ padding: '8px', 'font-size': '10.5px', color: 'var(--danger)' }}>⛔ {filterErr()}</div>
+          </Show>
           <Show when={hitLoading()} fallback={
             hits().length ? (
               <For each={hits()}>

@@ -1,14 +1,14 @@
-// bump v0.6.2 → v0.6.3 (fix files/list CORS) en package.json + manifest + footer
+// bump v0.6.3 → v0.6.4 (parseo {entries} + errores visibles)
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const NEW_VERSION = '0.6.3'
-const NEW_CHECKSUM = '4f3fbf0a69d00844808367b7b62e8a4c694fcac6f82fbb78ab5a07470565de49'
-const FOOTER = 'Solid + Vite · v0.6.3'
+const NEW_VERSION = '0.6.4'
+const NEW_CHECKSUM = '9d608c4b9c8a86fd137f3976b6cbbc83921abbc805b1a26251acada16d0f2609'
+const FOOTER = 'Solid + Vite · v0.6.4'
 
 {
   const p = 'package.json'
   let c = readFileSync(p, 'utf8').replace(/^\uFEFF/, '')
-  c = c.replace('"0.6.2"', `"${NEW_VERSION}"`)
+  c = c.replace('"0.6.3"', `"${NEW_VERSION}"`)
   writeFileSync(p, c, 'utf8')
   console.log('package.json →', JSON.parse(c).version)
 }
@@ -17,7 +17,7 @@ const FOOTER = 'Solid + Vite · v0.6.3'
   const m = JSON.parse(readFileSync('manifest.json', 'utf8'))
   m.version = NEW_VERSION
   m.checksum = NEW_CHECKSUM
-  m.description = 'El editor nativo de YOLA — producto independiente: corre en el YOLA OS y como .exe de escritorio con su daemon embebido. v0.6.3: filesApi propio con el contrato real del bridge (el del OS usaba /files/list, ruta inexistente → 404 sin ACAO → "CORS blocked" engañoso). El explorador ya lista los workspaces del OS.'
+  m.description = 'El editor nativo de YOLA. v0.6.4: parseo del formato real del bridge ({entries}) en files.list — el bug que ocultaba la lista como «Vacío»; errores SIEMPRE visibles en explorador y búsquedas (nunca silenciosos).'
   writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n', 'utf8')
   console.log('manifest →', m.version)
 }

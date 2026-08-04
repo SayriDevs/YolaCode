@@ -8,6 +8,7 @@ export function WorkspaceSearch(props) {
   // props: { filesApi, workspace, open, query, onClose, onOpenFile }
   const [results, setResults] = createSignal(null) // null = sin búsqueda aún | [] = sin matches | [{path, name, lines:[{line,text}]}]
   const [running, setRunning] = createSignal(false)
+  const [err, setErr] = createSignal('')
 
   let abortRef = null
 
@@ -15,6 +16,7 @@ export function WorkspaceSearch(props) {
     const q = props.query().trim()
     if (!q || !props.workspace || !props.filesApi) return
     setRunning(true)
+    setErr('')
     setResults([])
     if (abortRef) abortRef.abort()
     const ac = new AbortController()
@@ -22,6 +24,7 @@ export function WorkspaceSearch(props) {
 
     const byFile = new Map() // path -> {path, name, lines: []}
     const ql = q.toLowerCase()
+    let walkErr = ''
 
     async function walk(dir, depth) {
       if (ac.signal.aborted) return
@@ -29,7 +32,8 @@ export function WorkspaceSearch(props) {
       let entries
       try {
         entries = await props.filesApi.list(props.workspace, dir === '/' ? '' : dir)
-      } catch {
+      } catch (e) {
+        if (!walkErr) walkErr = e.message
         return
       }
       for (const item of entries) {
@@ -63,6 +67,7 @@ export function WorkspaceSearch(props) {
     await walk('/', 0)
     if (!ac.signal.aborted) {
       setResults([...byFile.values()])
+      setErr(walkErr)
       setRunning(false)
     }
   }
@@ -106,6 +111,9 @@ export function WorkspaceSearch(props) {
             <button onClick={props.onClose} style={btn} aria-label="Cerrar búsqueda">✕</button>
           </div>
           <div style={{ 'max-height': '340px', 'overflow-y': 'auto', padding: '4px 6px 8px' }}>
+            <Show when={err()}>
+              <div style={{ padding: '8px', 'font-size': '10.5px', color: 'var(--danger)' }}>⛔ {err()}</div>
+            </Show>
             <Show when={running()}>
               <div style={{ padding: '12px', 'font-size': '11px', color: 'var(--text-muted)', 'text-align': 'center' }}>Buscando…</div>
             </Show>
