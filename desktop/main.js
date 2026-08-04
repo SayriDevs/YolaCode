@@ -1,5 +1,7 @@
 // ── YolaCode Desktop — main: monta el MISMO bundle con el api local ──
-import { mount } from '../dist/app.js'
+// IMPORTANTE: import relativo SIMPLE (./app.bundle.js) — el custom
+// protocol de Tauri no resuelve '..' fuera del frontendDist.
+import { mount } from './app.bundle.js'
 import { buildDesktopApi } from './api.js'
 
 const api = await buildDesktopApi()
