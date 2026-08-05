@@ -6,13 +6,19 @@
 import { createSignal, createEffect, For, Show, onMount } from 'solid-js'
 import { createAgentClient } from './client'
 import { extractCodeBlock } from './sse'
+import { parseChecklist, diffLines, isFileWritingTool, toolPath } from './plan'
 
 const TAG = 'yola-code'
 
 export function AgentPanel(props) {
-  // props: { api, open, onClose, getActiveFile, getSelection, onApplyToActive, prefill, onPrefillConsumed }
+  // props: { api, open, onClose, getActiveFile, getSelection, onApplyToActive, prefill, onPrefillConsumed, filesApi }
   const daemonUrl = props.api?.os?.daemonUrl || 'http://localhost:7779'
   const client = createAgentClient(daemonUrl)
+
+  const [mode, setMode] = createSignal('chat') // 'chat' | 'plan'
+  const [todos, setTodos] = createSignal([]) // [{title, done}] del plan del agente
+  const [diffs, setDiffs] = createSignal([]) // [{id, path, before, after}]
+  const pendingWrites = new Map() // tool_call id → {path, before}
 
   const [sessions, setSessions] = createSignal([])
   const [sessionId, setSessionId] = createSignal(localStorage.getItem('yola-code-session') || '')
@@ -73,6 +79,17 @@ export function AgentPanel(props) {
     setInput('')
   }
 
+  async function revertDiff(diff) {
+    if (!props.filesApi) return
+    try {
+      await props.filesApi.write(diff.path, diff.before)
+      setDiffs(prev => prev.filter(d => d.id !== diff.id))
+      flash('↩ Cambio revertido')
+    } catch (e) {
+      flash(`⛔ ${e.message}`)
+    }
+  }
+
   function pickSession(id) {
     setSessionId(id)
     localStorage.setItem('yola-code-session', id)
@@ -88,11 +105,19 @@ export function AgentPanel(props) {
     return `\n\n— ${kind}: ${f.name} —\n${code}`
   }
 
-  async function send() {
-    const text = input().trim()
+  async function send(rawText, opts = {}) {
+    // opts: { asPlan } → el agente PROPONE (no ejecuta) · { approve } → ejecuta el plan aprobado
+    const text = (rawText ?? input()).trim()
     if (!text || sending()) return
     setSending(true)
     setError('')
+    let prompt = text
+    if (opts.asPlan) {
+      prompt = 'Actúa como planificador. Propón un plan claro como checklist markdown (- [ ] ítems), uno por cambio. NO ejecutes nada todavía.\n\nTarea: ' + text
+    } else if (opts.approve) {
+      prompt = 'El plan fue aprobado. Ejecútalo ahora completo, marcando cada ítem del checklist al terminarlo. Usa tus herramientas.'
+    }
+    if (includeContext() && !opts.approve) prompt = prompt + contextText()
     let sid = sessionId()
     try {
       if (!sid) {
@@ -103,14 +128,12 @@ export function AgentPanel(props) {
         localStorage.setItem('yola-code-session', sid)
         loadSessions()
       }
-      const prompt = includeContext() ? text + contextText() : text
       setMessages(prev => [...prev, { role: 'user', text }])
       setMessages(prev => [...prev, { role: 'agent', text: '', pending: true }])
       setTools([]) // las tool-calls del turno
       setInput('')
       setStreaming(true)
       abortRef = new AbortController()
-      const agentIdx = () => messages().length // índice del mensaje del agente (tras push del user)
       await client.sendPrompt(sid, prompt, {
         signal: abortRef.signal,
         onToken: (t) => {
@@ -127,11 +150,32 @@ export function AgentPanel(props) {
             args: ev.arguments,
             status: 'run',
           }])
+          // si escribe archivos: capturar el ANTES para el diff individual
+          if (isFileWritingTool(ev.name) && props.filesApi) {
+            const path = toolPath(ev.arguments)
+            if (path) {
+              props.filesApi.read(path)
+                .then(before => pendingWrites.set(ev.id, { path, before }))
+                .catch(() => { /* archivo nuevo o ilegible: sin diff */ })
+            }
+          }
         },
         onToolResult: (ev) => {
           setTools(prev => prev.map(t => t.id === ev.id
             ? { ...t, status: ev.success ? 'ok' : 'err', duration: ev.duration_ms }
             : t))
+          // capturar el DESPUÉS → generar la tarjeta de diff con revert
+          const pending = pendingWrites.get(ev.id)
+          if (pending && ev.success !== false && props.filesApi) {
+            pendingWrites.delete(ev.id)
+            props.filesApi.read(pending.path)
+              .then(after => {
+                if (after !== pending.before) {
+                  setDiffs(prev => [...prev, { id: ev.id, path: pending.path, before: pending.before, after }])
+                }
+              })
+              .catch(() => { /* ilegible */ })
+          }
         },
         onError: (e) => {
           // el error DEBE finalizar el stream: la UI no puede quedar
@@ -144,9 +188,13 @@ export function AgentPanel(props) {
           setSending(false)
         },
         onDone: () => {
+          const last = messages()
+          const finalText = last[last.length - 1]?.text || ''
           setMessages(prev => prev.map((m, idx) => idx === prev.length - 1 ? { ...m, pending: false } : m))
           setStreaming(false)
           setSending(false)
+          // en modo plan: la respuesta final ES el plan → tarjetas de todos
+          if (mode() === 'plan' && finalText) setTodos(parseChecklist(finalText))
         },
       })
     } catch (e) {
@@ -215,6 +263,25 @@ export function AgentPanel(props) {
         }}>
           <span style={{ 'font-size': '13px' }}>✨</span>
           <span style={{ 'font-weight': 600, 'font-size': '12px' }}>YOLA</span>
+          {/* Modo: chat conversacional vs plan aprobable */}
+          <div style={{ display: 'flex', gap: '2px', 'border-radius': '7px', border: '1px solid var(--border-window)', padding: '1px' }}>
+            <button
+              onClick={() => setMode('chat')}
+              style={{
+                ...modeBtn, color: mode() === 'chat' ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: mode() === 'chat' ? 'color-mix(in srgb, var(--accent) 18%, transparent)' : 'transparent',
+              }}
+              title="Chat conversacional"
+            >💬</button>
+            <button
+              onClick={() => setMode('plan')}
+              style={{
+                ...modeBtn, color: mode() === 'plan' ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: mode() === 'plan' ? 'color-mix(in srgb, var(--accent) 18%, transparent)' : 'transparent',
+              }}
+              title="Modo plan: propone → apruebas → ejecuta con diffs"
+            >📋</button>
+          </div>
           <Show when={sessionId()}>
             <span style={{ 'font-size': '9.5px', color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '1px 6px', 'border-radius': '8px' }}>#{TAG}</span>
           </Show>
@@ -251,6 +318,75 @@ export function AgentPanel(props) {
 
         {/* Mensajes */}
         <div style={{ flex: 1, overflow: 'auto', padding: '8px', 'min-height': '0' }}>
+          {/* ── Modo plan: todos del agente + aprobar ── */}
+          <Show when={mode() === 'plan' && todos().length}>
+            <div style={{ 'margin-bottom': '8px', 'border-radius': '8px', border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border-window))', padding: '7px', background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
+              <div style={{ 'font-size': '10px', 'font-weight': 700, color: 'var(--accent)', 'margin-bottom': '4px', 'text-transform': 'uppercase', 'letter-spacing': '0.4px' }}>
+                📋 Plan propuesto
+              </div>
+              <div style={{ display: 'flex', 'flex-direction': 'column', gap: '3px' }}>
+                <For each={todos()}>
+                  {(t, i) => (
+                    <div style={{ display: 'flex', gap: '6px', 'align-items': 'center', 'font-size': '10.5px', color: t.done ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                      <span>{t.done ? '☑' : '☐'}</span>
+                      <span style={{ 'text-decoration': t.done ? 'line-through' : 'none' }}>{t.title}</span>
+                    </div>
+                  )}
+                </For>
+              </div>
+              <button
+                onClick={() => send('', { approve: true })}
+                disabled={sending()}
+                style={{
+                  ...miniBtn, 'margin-top': '6px', width: '100%',
+                  color: 'var(--success)',
+                  border: '1px solid color-mix(in srgb, var(--success) 45%, transparent)',
+                  background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                }}
+                className="yola-btn"
+              >✅ Aprobar y ejecutar</button>
+            </div>
+          </Show>
+
+          {/* ── Diffs de la ejecución (con revert individual) ── */}
+          <Show when={diffs().length}>
+            <div style={{ 'margin-bottom': '8px', 'border-radius': '8px', border: '1px solid color-mix(in srgb, var(--warning) 30%, var(--border-window))', padding: '7px', background: 'color-mix(in srgb, var(--warning) 4%, transparent)' }}>
+              <div style={{ 'font-size': '10px', 'font-weight': 700, color: 'var(--warning)', 'margin-bottom': '4px', 'text-transform': 'uppercase', 'letter-spacing': '0.4px' }}>
+                🩹 Cambios del agente ({diffs().length})
+              </div>
+              <div style={{ display: 'flex', 'flex-direction': 'column', gap: '5px' }}>
+                <For each={diffs()}>
+                  {(d) => (
+                    <div style={{ border: '1px solid var(--border-window)', 'border-radius': '6px', overflow: 'hidden' }}>
+                      <div style={{
+                        display: 'flex', 'align-items': 'center', gap: '6px', padding: '3px 7px',
+                        background: 'var(--bg-window-header)', 'font-size': '10px', 'font-family': 'monospace',
+                      }}>
+                        <span>✏️</span>
+                        <span style={{ overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{d.path}</span>
+                        <div style={{ flex: 1 }} />
+                        <button
+                          onClick={() => revertDiff(d)}
+                          style={{ ...miniBtn, padding: '1px 7px', 'font-size': '9.5px', color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 40%, transparent)' }}
+                          title="Restaurar el contenido anterior"
+                        >↩ Revertir</button>
+                      </div>
+                      <div style={{ 'max-height': '90px', overflow: 'auto', padding: '4px 7px', 'font-size': '9.5px', 'line-height': '1.45', 'font-family': 'monospace', 'white-space': 'pre-wrap', 'word-break': 'break-all' }}>
+                        <For each={diffLines(d.before, d.after)}>
+                          {(ln) => (
+                            <div style={{
+                              color: ln.type === '+' ? 'var(--success)' : ln.type === '-' ? 'var(--danger)' : 'var(--text-muted)',
+                            }}>{ln.type === '…' ? ln.text : `${ln.type} ${ln.text}`}</div>
+                          )}
+                        </For>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+
           <Show when={!messages().length}>
             <div style={{ 'font-size': '11px', color: 'var(--text-muted)', 'text-align': 'center', padding: '16px 4px', 'line-height': '1.6' }}>
               Pídele al agente que edite tu código.<br />
@@ -348,7 +484,7 @@ export function AgentPanel(props) {
             className="yola-input"
             onInput={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send('', mode() === 'plan' ? { asPlan: true } : {}) }
               if (e.key === 'Escape') props.onClose()
             }}
             placeholder="Pregúntale al agente… (Enter envía, Shift+Enter salto)"
@@ -374,7 +510,7 @@ export function AgentPanel(props) {
             <Show when={streaming()}>
               <button onClick={stop} style={miniBtn} className="yola-btn" title="Detener">⏹ Detener</button>
             </Show>
-            <button onClick={send} disabled={sending() || !input().trim()} className="yola-btn" style={{
+            <button onClick={() => send('', mode() === 'plan' ? { asPlan: true } : {})} disabled={sending() || !input().trim()} className="yola-btn" style={{
               ...miniBtn, color: 'var(--text-primary)', background: 'color-mix(in srgb, var(--accent) 20%, transparent)',
               border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)', opacity: sending() || !input().trim() ? 0.5 : 1,
             }}>Enviar</button>
@@ -447,6 +583,11 @@ const miniBtn = {
   border: '1px solid var(--border-window)', 'border-radius': '6px',
   background: 'transparent', color: 'var(--text-primary)',
   'font-size': '10.5px', 'font-family': 'var(--font)',
+}
+
+const modeBtn = {
+  padding: '2px 7px', cursor: 'pointer', border: 'none', background: 'transparent',
+  'font-size': '11px', 'font-family': 'var(--font)', 'border-radius': '5px',
 }
 
 function toolIcon(name) {

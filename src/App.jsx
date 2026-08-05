@@ -751,7 +751,7 @@ export function createApp(api) {
                   <span>Ln {cursor().line}, Col {cursor().col}</span>
                 </Show>
               </Show>
-              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.6.6</span>
+              <span style={{ 'margin-left': 'auto' }}>Solid + Vite · v0.7.0</span>
               <button onClick={() => setHelpOpen(v => !v)} style={btnStyle} title="Atajos (F1)" aria-label="Atajos de teclado">❓</button>
             </div>
           </div>
@@ -766,6 +766,7 @@ export function createApp(api) {
             onApplyToActive={applyToActive}
             prefill={agentPrefill()}
             onPrefillConsumed={() => setAgentPrefill('')}
+            filesApi={filesApi}
           />
         </div>
 
